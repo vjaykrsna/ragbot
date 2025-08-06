@@ -8,11 +8,11 @@ Here is a high-level overview of the system architecture:
 
 ```mermaid
 graph TD
-    A[Telegram Group] -- Raw Chat Data --> B(Data Extractor);
+    A[Telegram Group] -- Raw Chat Data --> B(Data Extractor - Telethon);
     B -- Python Script --> C{Raw Data};
     C -- Python/LLM --> D(Data Processor);
-    D -- Cleaned Q&A --> E[Knowledge Base .json];
-    F[Telegram User] -- /ask question --> G{Telegram Bot};
+    D -- Cleaned Q&A --> E[Vector Database - ChromaDB];
+    F[Telegram User] -- /ask question --> G{Telegram Bot - python-telegram-bot};
     G -- User Query --> H(RAG Pipeline);
     H -- Search Query --> E;
     E -- Relevant Context --> H;
@@ -39,14 +39,15 @@ graph TD
 ### Phase 1: Project Setup & Data Extraction
 -   [ ] **1.1: Set up Python virtual environment and install initial dependencies.**
     -   Create a `requirements.txt` file.
-    -   Dependencies: `python-telegram-bot`, `google-generativeai`, `python-dotenv`.
--   [ ] **1.2: Create a new Telegram bot using BotFather.**
-    -   Get the API token.
-    -   Create a `.env` file to store the token securely.
--   [ ] **1.3: Write a Python script (`extract_history.py`) to extract chat history.**
-    -   Use the Telegram API (via `python-telegram-bot` or another library) to connect.
-    -   Handle authentication and connect to the target group.
-    -   Fetch and save the chat history to a raw text or JSON file.
+    -   Dependencies: `telethon` (for data extraction), `python-telegram-bot` (for the live bot), `google-generativeai`, `python-dotenv`, `chromadb`.
+-   [ ] **1.2: Set up Telegram Credentials.**
+    -   **For Data Extraction:** Get your personal `api_id` and `api_hash` from my.telegram.org.
+    -   **For Live Bot:** Create a new bot with BotFather to get the `BOT_TOKEN`.
+    -   Store all credentials securely in a `.env` file.
+-   [ ] **1.3: Write a Python script (`extract_history.py`) using Telethon.**
+    -   This script will use your personal client credentials (`api_id`, `api_hash`) to act as a user.
+    -   It will connect to the target group and scrape the entire message history.
+    -   The raw message data will be saved to a JSON file for processing.
 
 ### Phase 2: Data Processing & Knowledge Base Creation
 -   [ ] **2.1: Develop a Python script (`process_data.py`) for advanced data cleaning.**
@@ -58,30 +59,19 @@ graph TD
     -   The goal is to create a prompt that instructs the LLM to act as a data analyst. The prompt should guide the model to:
         -   Identify clear questions and their direct, concise answers from a conversation thread.
         -   Ignore conversational filler and irrelevant chatter.
-        -   Extract the information into a structured JSON format, like:
-            ```json
-            {
-              "question": "The extracted user question.",
-              "answer": "The most direct and accurate answer found in the thread.",
-              "confidence_score": 0.9,
-              "source_thread_id": "thread_123"
-            }
-            ```
-        -   Provide a confidence score on how certain it is that the extracted answer correctly addresses the question.
+        -   Extract the information into a structured JSON format.
 -   [ ] **2.3: Implement the Q&A extraction and knowledge base population.**
     -   Write a script that feeds the cleaned conversation threads and the master prompt to the Gemini API.
     -   Process the structured JSON output from the LLM.
     -   Generate embeddings for each Q&A pair and store them in the vector database.
 
 ### Phase 3: Telegram Bot & RAG Implementation
--   [ ] **3.1: Set up the main bot file (`bot.py`).**
+-   [ ] **3.1: Set up the main bot file (`bot.py`) using `python-telegram-bot`.**
+    -   This script will use the `BOT_TOKEN` to run as a standard Telegram bot.
     -   Load API keys from `.env`.
-    -   Create handlers for commands like `/start` and `/help`.
-    -   Set up the main message handler for answering questions.
+    -   Create handlers for commands like `/start`, `/help`, and the admin `/sync` command.
+    -   Set up the main message handler for answering user questions.
 -   [ ] **3.2: Implement the RAG (Retrieval-Augmented Generation) pipeline.**
-    -   **Retrieval Strategy Decision:**
-        -   **Option A (Simple):** Use a JSON file and keyword search. Fast to implement, but low-quality search.
-        -   **Option B (Recommended):** Use a vector database (e.g., ChromaDB) for semantic search. Requires learning about embeddings but provides far superior results.
     -   **Retrieval Implementation (Vector DB):**
         -   When a user asks a question, generate an embedding for their query.
         -   Use the vector database to find the most similar documents (Q&A pairs) from the knowledge base.
@@ -89,7 +79,7 @@ graph TD
     -   **Generation:** Send the augmented prompt to the Gemini API and get the final answer.
     -   Send the generated answer back to the user on Telegram.
 
-### Phase 4: Deployment & Maintenance
+### Phase 4: Deployment & Testing
 -   [ ] **4.1: Write unit tests.**
     -   Create tests for the data processing functions.
     -   Test the RAG pipeline components.
@@ -98,7 +88,6 @@ graph TD
     -   Prepare the project for deployment (e.g., creating a `Dockerfile` or `render.yaml`).
 -   [ ] **4.3: Set up knowledge base updates.**
     -   Implement a manual `/sync` command in the bot for the admin to trigger updates.
-    -   Alternatively, if the chosen platform supports it easily, set up an automated cron job.
 
 ### Appendix: Deployment Options Analysis (Deep Research Update for 2025)
 
