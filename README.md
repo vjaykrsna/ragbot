@@ -47,13 +47,18 @@ graph TD
 -   [ ] **1.3: Write a Python script (`extract_history.py`) using Telethon.**
     -   This script will use your personal client credentials (`api_id`, `api_hash`) to act as a user.
     -   It will connect to the target group and scrape the entire message history.
+    -   **Topic Handling:** The script must be able to iterate through all topics within the group and extract messages from each one, not just the main "General" topic.
     -   The raw message data will be saved to a JSON file for processing.
 
 ### Phase 2: Data Processing & Knowledge Base Creation
 -   [ ] **2.1: Develop a Python script (`process_data.py`) for advanced data cleaning.**
     -   **Anonymization:** Replace usernames and user IDs with generic placeholders (e.g., `User_A`, `User_B`) to protect privacy.
-    -   **Noise Reduction:** Filter out system messages (joins/leaves), stickers, GIFs, and non-text content.
-    -   **Content Filtering:** Remove spam, off-topic conversations, and messages that don't contribute to the knowledge base.
+    -   **Noise Reduction:** Filter out system messages (joins/leaves), stickers, and GIFs.
+    -   **Content-Type Handling:** The script must identify and extract meaningful data from different message types:
+        -   **Text:** Standard text messages.
+        -   **Links:** URLs shared in the chat.
+        -   **Polls:** Extract the question and all options from poll messages. This data will be given a higher weight in the knowledge base.
+    -   **Content Filtering:** Remove spam and off-topic conversations.
     -   **Conversation Grouping:** Group messages into logical conversation threads for contextual analysis.
 -   [ ] **2.2: Design a high-quality prompt for Q&A extraction.**
     -   The goal is to create a prompt that instructs the LLM to act as a data analyst. The prompt should guide the model to:
@@ -88,6 +93,7 @@ graph TD
     -   Prepare the project for deployment (e.g., creating a `Dockerfile` or `render.yaml`).
 -   [ ] **4.3: Set up knowledge base updates.**
     -   Implement a manual `/sync` command in the bot for the admin to trigger updates.
+    -   **Future Improvement:** Consider replacing `print()` statements with a proper `logging` setup for better monitoring, especially if the script is automated (e.g., via cron job).
 
 ### Appendix: Deployment Options Analysis (Deep Research Update for 2025)
 
