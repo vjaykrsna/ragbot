@@ -209,3 +209,8 @@ __marimo__/
 # Telethon session file
 ragbot_session.session
 ragbot_session.session-journal
+
+# My files and folder
+extracted_data
+test.py
+last_msg_ids.json
