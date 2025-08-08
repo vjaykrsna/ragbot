@@ -1,10 +1,10 @@
-# Telegram Bot Project: Action Plan
+# RAG-Powered Telegram Bot for Community Support
 
-This document outlines the step-by-step plan to build the LLM-powered Telegram bot for community support.
+This project is an LLM-powered Telegram bot that uses a Retrieval-Augmented Generation (RAG) pipeline to answer questions based on the chat history of a Telegram group.
 
 ## Project Architecture
 
-Here is a high-level overview of the system architecture:
+The system is composed of two main parts: an offline processing pipeline that builds a knowledge base from the chat history, and a live Telegram bot that uses the knowledge base to answer user questions.
 
 ```mermaid
 graph TD
@@ -34,86 +34,56 @@ graph TD
     end
 ```
 
-## Development Phases
+## Setup and Usage
 
-### Phase 1: Project Setup & Data Extraction
--   [ ] **1.1: Set up Python virtual environment and install initial dependencies.**
-    -   Create a `requirements.txt` file.
-    -   Dependencies: `telethon` (for data extraction), `python-telegram-bot` (for the live bot), `google-generativeai`, `python-dotenv`, `chromadb`.
--   [ ] **1.2: Set up Telegram Credentials.**
-    -   **For Data Extraction:** Get your personal `api_id` and `api_hash` from my.telegram.org.
-    -   **For Live Bot:** Create a new bot with BotFather to get the `BOT_TOKEN`.
-    -   Store all credentials securely in a `.env` file.
--   [ ] **1.3: Write a Python script (`extract_history.py`) using Telethon.**
-    -   This script will use your personal client credentials (`api_id`, `api_hash`) to act as a user.
-    -   It will connect to the target group and scrape the entire message history.
-    -   **Topic Handling:** The script must be able to iterate through all topics within the group and extract messages from each one, not just the main "General" topic.
-    -   The raw message data will be saved to a JSON file for processing.
+### 1. Prerequisites
 
-### Phase 2: Data Processing & Knowledge Base Creation
--   [ ] **2.1: Develop a Python script (`process_data.py`) for advanced data cleaning.**
-    -   **Anonymization:** Replace usernames and user IDs with generic placeholders (e.g., `User_A`, `User_B`) to protect privacy.
-    -   **Noise Reduction:** Filter out system messages (joins/leaves), stickers, and GIFs.
-    -   **Content-Type Handling:** The script must identify and extract meaningful data from different message types:
-        -   **Text:** Standard text messages.
-        -   **Links:** URLs shared in the chat.
-        -   **Polls:** Extract the question and all options from poll messages. This data will be given a higher weight in the knowledge base.
-    -   **Content Filtering:** Remove spam and off-topic conversations.
-    -   **Conversation Grouping:** Group messages into logical conversation threads for contextual analysis.
--   [ ] **2.2: Design a high-quality prompt for Q&A extraction.**
-    -   The goal is to create a prompt that instructs the LLM to act as a data analyst. The prompt should guide the model to:
-        -   Identify clear questions and their direct, concise answers from a conversation thread.
-        -   Ignore conversational filler and irrelevant chatter.
-        -   Extract the information into a structured JSON format.
--   [ ] **2.3: Implement the Q&A extraction and knowledge base population.**
-    -   Write a script that feeds the cleaned conversation threads and the master prompt to the Gemini API.
-    -   Process the structured JSON output from the LLM.
-    -   Generate embeddings for each Q&A pair and store them in the vector database.
+*   Python 3.10+
+*   Telegram account
+*   Google Gemini API keys
 
-### Phase 3: Telegram Bot & RAG Implementation
--   [ ] **3.1: Set up the main bot file (`bot.py`) using `python-telegram-bot`.**
-    -   This script will use the `BOT_TOKEN` to run as a standard Telegram bot.
-    -   Load API keys from `.env`.
-    -   Create handlers for commands like `/start`, `/help`, and the admin `/sync` command.
-    -   Set up the main message handler for answering user questions.
--   [ ] **3.2: Implement the RAG (Retrieval-Augmented Generation) pipeline.**
-    -   **Retrieval Implementation (Vector DB):**
-        -   When a user asks a question, generate an embedding for their query.
-        -   Use the vector database to find the most similar documents (Q&A pairs) from the knowledge base.
-    -   **Augmentation:** Create a prompt for Gemini that includes the user's original question and the retrieved context from the vector database.
-    -   **Generation:** Send the augmented prompt to the Gemini API and get the final answer.
-    -   Send the generated answer back to the user on Telegram.
+### 2. Installation
 
-### Phase 4: Deployment & Testing
--   [ ] **4.1: Write unit tests.**
-    -   Create tests for the data processing functions.
-    -   Test the RAG pipeline components.
--   [ ] **4.2: Choose a deployment platform and deploy the bot.**
-    -   Review the deployment options below and select the best fit.
-    -   Prepare the project for deployment (e.g., creating a `Dockerfile` or `render.yaml`).
--   [ ] **4.3: Set up knowledge base updates.**
-    -   Implement a manual `/sync` command in the bot for the admin to trigger updates.
-    -   **Future Improvement:** Consider replacing `print()` statements with a proper `logging` setup for better monitoring, especially if the script is automated (e.g., via cron job).
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd <repository-directory>
+    ```
 
-### Appendix: Deployment Options Analysis (Deep Research Update for 2025)
+2.  **Create a virtual environment and install dependencies:**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
 
-This section details the recommended free hosting options for this project, updated with extensive, verified information as of 2025.
+3.  **Set up your credentials:**
+    *   Create a `.env` file by copying the `.env.example` file.
+    *   **For Data Extraction:** Get your personal `api_id` and `api_hash` from [my.telegram.org](https://my.telegram.org).
+    *   **For Live Bot:** Create a new bot with [@BotFather](https://t.me/botfather) to get your `TELEGRAM_BOT_TOKEN`.
+    *   Add your Google Gemini API keys to the `.env` file.
 
-**Conclusion:** After a thorough investigation into multiple platforms, **Oracle Cloud Free Tier remains the only identified platform that provides both always-on compute and persistent disk storage for free.** This combination is essential for the project's architecture, which requires a constantly running bot and a persistent vector database.
+### 3. Running the Project
 
-#### Recommended Option:
+1.  **Start the LiteLLM Proxy:**
+    The LiteLLM proxy is used to manage the Gemini API keys and provide a single endpoint for the application. To start the proxy, run the following command in a separate terminal:
+    ```bash
+    litellm --config litellm_config.yaml
+    ```
 
-1.  **Oracle Cloud Free Tier**
-    *   **Hardware:** Always-free Ampere ARM server (up to 4 cores, 24 GB RAM).
-    *   **Storage:** 200 GB of persistent block storage.
-    *   **Uptime:** True 24/7, no sleeping instances.
-    *   **Pros:** Extremely powerful, massive resource limits for a free tier. Meets all project requirements.
-    *   **Cons:** More complex initial setup, requires managing a full Linux VM.
+2.  **Build the Knowledge Base:**
+    The `synthesize_knowledge.py` script is used to build the knowledge base from the chat history. To run the script, use the following command:
+    ```bash
+    python synthesize_knowledge.py
+    ```
+    This script will process the chat history, generate knowledge nuggets, and store them in the vector database.
 
-#### Investigated & Non-Viable Alternatives:
+3.  **Run the Telegram Bot:**
+    Once the knowledge base has been built, you can start the Telegram bot by running the following command:
+    ```bash
+    python bot.py
+    ```
 
-*   **Fly.io:** Research confirms their free tier no longer includes persistent storage.
-*   **Render:** Research confirms their free web services do not support persistent disks.
-*   **Deta.space:** Research confirms the service is shutting down and is no longer a viable option.
-*   **Railway.app:** Operates on a pay-as-you-go model and does not offer a comprehensive free tier covering our compute and storage needs.
-*   **Hugging Face Spaces:** Offers free compute but only ephemeral storage on its free tier. Persistent storage is a paid feature.
+## Deployment
+
+The recommended deployment platform for this project is the **Oracle Cloud Free Tier**, as it provides an always-on compute instance and persistent disk storage for free.
