@@ -13,7 +13,7 @@ load_dotenv()
 
 # --- Telegram Bot Configuration ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROUP_IDS = [int(gid.strip()) for gid in os.getenv("GROUP_IDS", "").split(',') if gid]
+GROUP_IDS = [int(gid.strip()) for gid in os.getenv("GROUP_IDS", "").split(",") if gid]
 
 # --- LiteLLM Proxy Configuration ---
 LITELLM_PROXY_URL = os.getenv("LITELLM_PROXY_URL")
