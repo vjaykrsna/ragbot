@@ -212,6 +212,12 @@ ragbot_session.session-journal
 
 # My files and folder
 extracted_data
+processed_data
+vector_database
+
 test.py
 last_msg_ids.json
 log.txt
+
+# LiteLLM Configuration
+litellm_config.yaml
