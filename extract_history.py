@@ -3,6 +3,8 @@ import json
 import re
 from dotenv import load_dotenv
 import telethon
+import asyncio
+from telethon.errors import FloodWaitError
 from telethon.sync import TelegramClient
 from telethon.tl.types import PeerChannel
 from datetime import datetime
@@ -21,10 +23,36 @@ TRACKING_FILE = "last_msg_ids.json"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
+# ==============================================================================
+# 1. HELPER FUNCTIONS & CLASSES
+# ==============================================================================
+
 def safe_filename(s):
+    """Sanitizes a string to be a valid filename."""
     return re.sub(r"[^a-zA-Z0-9_\-]", "_", s)
 
+def normalize_title(title):
+    """Safely convert a title (which may be an entity) to a string."""
+    try:
+        return title.text if hasattr(title, 'text') else str(title)
+    except Exception:
+        return "UnknownTopic"
+
+class TelegramObjectEncoder(json.JSONEncoder):
+    """A custom JSON encoder for handling Telegram-specific objects."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        return super().default(obj)
+
+# ==============================================================================
+# 2. DATA STORAGE & PROGRESS TRACKING
+# ==============================================================================
+
 def save_message_jsonl(chat_title, messages):
+    """Saves a list of messages to a .jsonl file."""
     safe_title = safe_filename(chat_title)
     filename = f"{safe_title}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
     filepath = os.path.join(OUTPUT_DIR, filename)
@@ -34,93 +62,110 @@ def save_message_jsonl(chat_title, messages):
             f.write("\n")
     print(f"✅ Saved {len(messages)} messages to {filepath}")
 
-
 def load_last_msg_ids():
+    """Loads the last processed message IDs from the tracking file."""
     if os.path.exists(TRACKING_FILE):
         with open(TRACKING_FILE, "r") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {} # Return empty dict if file is corrupted
     return {}
 
-
 def save_last_msg_ids(data):
+    """Saves the last processed message IDs to the tracking file."""
     with open(TRACKING_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+# ==============================================================================
+# 3. CORE MESSAGE PROCESSING LOGIC
+# ==============================================================================
 
-class TelegramObjectEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if hasattr(obj, 'to_dict'):
-            return obj.to_dict()
-        return json.JSONEncoder.default(self, obj)
+def get_message_details(msg):
+    """
+    Analyzes a message and extracts its type, content, and any extra data.
+    Returns a tuple: (message_type, content, extra_data)
+    """
+    # Default to text message
+    message_type = "text"
+    content = msg.text
+    extra_data = {}
+    url_regex = r'https?://[^\s]+'
 
-def normalize_title(title):
-    """Safely convert a title (which may be an entity) to a string."""
-    try:
-        # Handles both strings and TextWithEntities objects
-        return title.text if hasattr(title, 'text') else str(title)
-    except Exception:
-        return "UnknownTopic"
+    # --- Poll Detection ---
+    if isinstance(msg.media, telethon.tl.types.MessageMediaPoll):
+        message_type = "poll"
+        poll = msg.media.poll
+        content = poll.question
+        extra_data["options"] = []
+        if msg.media.results and msg.media.results.results:
+            for answer, result in zip(poll.answers, msg.media.results.results):
+                extra_data["options"].append({"text": answer.text, "voters": result.voters})
+        else:
+            extra_data["options"] = [{"text": answer.text, "voters": 0} for answer in poll.answers]
+        return message_type, content, extra_data
+
+    # --- Link Detection (from entities or regex) ---
+    urls = []
+    if msg.entities:
+        for entity in msg.entities:
+            if isinstance(entity, telethon.tl.types.MessageEntityTextUrl):
+                urls.append(entity.url)
+            elif isinstance(entity, telethon.tl.types.MessageEntityUrl):
+                offset, length = entity.offset, entity.length
+                urls.append(msg.text[offset:offset+length])
+    
+    # Fallback to regex search if no entities found
+    if not urls and msg.text:
+        urls.extend(re.findall(url_regex, msg.text))
+
+    if urls:
+        message_type = "link"
+        content = msg.text if msg.text else urls[0]
+        extra_data["urls"] = list(set(urls))
+        return message_type, content, extra_data
+        
+    # --- Link Detection (from WebPage media) ---
+    if isinstance(msg.media, telethon.tl.types.MessageMediaWebPage):
+        message_type = "link"
+        # Content is already msg.text, no extra data needed as URL is in the text
+        return message_type, content, extra_data
+
+    # If no specific type is detected, return the default text type
+    return message_type, content, extra_data
+
 
 async def extract_from_topic(entity, topic, last_msg_ids):
+    """Extracts messages from a specific topic within a group."""
     messages = []
     group_id = entity.id
     topic_id = topic.id
-    topic_title = normalize_title(getattr(topic, "title", "Unknown"))
+    topic_title = normalize_title(getattr(topic, "title", "General"))
     last_id_key = f"{group_id}_{topic_id}"
     last_id = last_msg_ids.get(last_id_key, 0)
     max_id = 0
 
     print(f"  - 📥 Extracting from topic: '{topic_title}' (ID: {topic_id}) [Since message ID > {last_id}]")
 
-    # Conditionally set the iterator to handle both topics and regular groups
     iterator_kwargs = {'min_id': last_id, 'reverse': True}
-    if topic_id != 0:
+    if topic_id != 0: # 0 is the 'General' topic in non-forum groups
         iterator_kwargs['reply_to'] = topic_id
 
-    async for msg in tqdm_asyncio(client.iter_messages(entity, **iterator_kwargs), desc=f"{topic_title}", unit="msg"):
+    async for msg in tqdm_asyncio(client.iter_messages(entity, **iterator_kwargs), desc=f"{topic_title:20.20}", unit="msg"):
+        # Skip empty messages
         if not msg.text and not msg.media:
             continue
-        sender_id = msg.sender_id
-        message_type = "text"
-        content = msg.text
-        extra_data = {}
-        url_regex = r'https?://[^\s]+'
-        if isinstance(msg.media, telethon.tl.types.MessageMediaPoll):
-            message_type = "poll"
-            poll = msg.media.poll
-            content = poll.question # Keep the TextWithEntities object
-            extra_data["options"] = [answer.text for answer in poll.answers]
-        elif msg.entities or re.search(url_regex, msg.text or ''):
-            urls = []
-            if msg.entities:
-                for message_entity in msg.entities:
-                    if isinstance(message_entity, telethon.tl.types.MessageEntityTextUrl):
-                        urls.append(message_entity.url)
-                    elif isinstance(message_entity, telethon.tl.types.MessageEntityUrl):
-                        offset, length = message_entity.offset, message_entity.length
-                        urls.append(msg.text[offset:offset+length])
-            if not urls:
-                urls.extend(re.findall(url_regex, msg.text or ''))
-            if urls:
-                message_type = "link"
-                content = msg.text if msg.text else urls[0]
-                extra_data["urls"] = list(set(urls))
-        # Only handle WebPage media (links), ignore others like photos/videos
-        elif isinstance(msg.media, telethon.tl.types.MessageMediaWebPage):
-            message_type = "link" # Treat it as a link
-            content = msg.text
-            # The URL is already captured by the regex logic above,
-            # so we just need to ensure it's classified correctly.
-        else:
-            # This will now ignore all other media types
-            pass
 
+        message_type, content, extra_data = get_message_details(msg)
+
+        # Skip messages that ended up with no content after processing
         if not content:
             continue
+            
         messages.append({
             "id": msg.id,
             "date": msg.date.isoformat(),
-            "sender_id": sender_id,
+            "sender_id": msg.sender_id,
             "message_type": message_type,
             "content": content,
             "extra_data": extra_data,
@@ -166,23 +211,34 @@ async def extract_from_group_id(group_id, last_msg_ids):
         print(f"❌ Error processing group {group_id}: {e}")
 
 
+# ==============================================================================
+# 4. MAIN ORCHESTRATION
+# ==============================================================================
+
 async def main():
+    """Main function to connect the client and orchestrate the extraction."""
+    await client.start()
+    
     me = await client.get_me()
     print(f"👤 Logged in as: {me.first_name} (@{me.username})")
 
-    group_ids = [int(gid.strip()) for gid in os.getenv("GROUP_IDS", "").split(",") if gid.strip()]
-    if not group_ids:
-        print("⚠️ No GROUP_IDS found in .env")
+    group_ids_str = os.getenv("GROUP_IDS")
+    if not group_ids_str:
+        print("⚠️ No GROUP_IDS found in .env file. Please add the group/channel IDs to scrape.")
         return
-
+        
+    group_ids = [int(gid.strip()) for gid in group_ids_str.split(",") if gid.strip()]
     last_msg_ids = load_last_msg_ids()
 
     for gid in group_ids:
         await extract_from_group_id(gid, last_msg_ids)
 
     save_last_msg_ids(last_msg_ids)
+    
+    await client.disconnect()
+    print("\n🎉 Extraction complete. Client disconnected.")
 
 
 if __name__ == "__main__":
-    with client:
-        client.loop.run_until_complete(main())
+    # Using asyncio.run() is the modern way to run an async main function.
+    asyncio.run(main())
