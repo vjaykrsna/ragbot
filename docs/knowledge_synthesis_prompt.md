@@ -25,21 +25,22 @@ Your output **MUST** be a single, valid JSON object matching this structure:
 
 ```json
 {
-  "nugget_id": "string",
-  "topic_summary": "string",
-  "detailed_analysis": "string",
-  "status": "string <enum: 'FACT', 'SPECULATION', 'OUTDATED', 'COMMUNITY_OPINION'>",
-  "keywords": ["string"],
-  "first_message_timestamp": "string <ISO 8601>",
-  "last_message_timestamp": "string <ISO 8601>",
-  "source_message_ids": ["integer"],
-  "user_ids_involved": ["integer"]
+ "topic": "string",
+ "timestamp": "string <ISO 8601>",
+ "topic_summary": "string",
+ "detailed_analysis": "string",
+ "status": "string <enum: 'FACT', 'SPECULATION', 'OUTDATED', 'COMMUNITY_OPINION'>",
+ "keywords": ["string"],
+ "source_message_ids": ["integer"],
+ "user_ids_involved": ["integer"]
 }
 ```
 
 ### Field Instructions:
 
 -   `nugget_id`: Use the placeholder string `"uuid-placeholder"`. The calling script will generate the actual UUID.
+-   `topic`: A short, descriptive title for the conversation topic. This field is **MANDATORY**.
+-   `timestamp`: The timestamp of the **last** message in the conversation, in ISO 8601 format. This field is **MANDATORY**.
 -   `topic_summary`: A **single, concise sentence** that summarizes the core topic. This is critical for embedding and search.
 -   `detailed_analysis`: A **comprehensive, multi-sentence paragraph** that explains the topic in detail. Synthesize the answer or solution from the conversation.
 -   `status`: Classify the information's reliability:
@@ -48,8 +49,6 @@ Your output **MUST** be a single, valid JSON object matching this structure:
     -   `SPECULATION`: The information is a hypothesis, a question without a clear answer, or a guess.
     -   `OUTDATED`: The information, while once correct, is likely no longer valid (e.g., refers to an old version or a deprecated feature).
 -   `keywords`: Extract 3-5 key technical terms or entities from the conversation.
--   `first_message_timestamp`: Copy the `timestamp` of the *first* message in the input conversation.
--   `last_message_timestamp`: Copy the `timestamp` of the *last* message in the input conversation.
 -   `source_message_ids`: Create an array of all `message_id`s from the input conversation.
 -   `user_ids_involved`: Create an array of all unique, anonymized `user_id`s from the input conversation.
 
@@ -92,15 +91,14 @@ Your output **MUST** be a single, valid JSON object matching this structure:
 
 ```json
 {
-  "nugget_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "topic_summary": "How to correctly configure an Oracle Cloud 'Always Free' tier instance for reliable bot deployment.",
-  "detailed_analysis": "For a stable deployment on Oracle Cloud's 'Always Free' tier, it is crucial to select an Ampere A1 compute instance, as the default x86 instances are not eligible for the 'Always Free' guarantee and may be terminated. Additionally, it is best practice to configure a systemd service to ensure the bot process automatically restarts in case of a crash or system reboot.",
-  "status": "FACT",
-  "keywords": ["oracle cloud", "deployment", "free tier", "ampere a1", "systemd"],
-  "first_message_timestamp": "2025-08-05T14:20:00Z",
-  "last_message_timestamp": "2025-08-05T14:32:00Z",
-  "source_message_ids": [201, 202, 203, 204],
-  "user_ids_involved": [15, 22]
+ "topic": "Oracle Cloud Free Tier Deployment",
+ "timestamp": "2025-08-05T14:32:00Z",
+ "topic_summary": "How to correctly configure an Oracle Cloud 'Always Free' tier instance for reliable bot deployment.",
+ "detailed_analysis": "For a stable deployment on Oracle Cloud's 'Always Free' tier, it is crucial to select an Ampere A1 compute instance, as the default x86 instances are not eligible for the 'Always Free' guarantee and may be terminated. Additionally, it is best practice to configure a systemd service to ensure the bot process automatically restarts in case of a crash or system reboot.",
+ "status": "FACT",
+ "keywords": ["oracle cloud", "deployment", "free tier", "ampere a1", "systemd"],
+ "source_message_ids": [201, 202, 203, 204],
+ "user_ids_involved": [15, 22]
 }
 ```
 
