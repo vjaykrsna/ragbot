@@ -8,29 +8,23 @@ The system is composed of two main parts: an offline processing pipeline that bu
 
 ```mermaid
 graph TD
-    A[Telegram Group] -- Raw Chat Data --> B(Data Extractor - Telethon);
-    B -- Python Script --> C{Raw Data};
-    C -- Python/LLM --> D(Data Processor);
-    D -- Cleaned Q&A --> E[Vector Database - ChromaDB];
-    F[Telegram User] -- /ask question --> G{Telegram Bot - python-telegram-bot};
-    G -- User Query --> H(RAG Pipeline);
-    H -- Search Query --> E;
-    E -- Relevant Context --> H;
-    H -- Prompt [Query + Context] --> I(Gemini API);
-    I -- Generated Answer --> H;
-    H -- Final Answer --> G;
-    G -- Sends Answer --> F;
-
-    subgraph "Offline Processing"
-        B
-        C
-        D
+    subgraph "Offline Data Processing Pipeline"
+        A[Telegram Group] -- Raw Chat Data --> B(Data Extractor - Telethon);
+        B -- Raw Messages (.jsonl) --> C{Streaming Data Processor};
+        C -- Sorted & Grouped Conversations --> D(Knowledge Synthesizer - Gemini);
+        D -- Knowledge Nuggets --> E[Vector Database - ChromaDB];
     end
 
-    subgraph "Live Bot"
-        G
-        H
-        I
+    subgraph "Live RAG Pipeline"
+        F[Telegram User] -- /ask question --> G{Telegram Bot};
+        G -- User Query --> H(RAG Pipeline);
+        H -- 1. Semantic Search --> E;
+        E -- Top-k Nuggets --> H;
+        H -- 2. Filter & Re-rank --> I(Filtering Logic);
+        I -- Relevant Nuggets --> H;
+        H -- 3. Generate Response --> J(Response Generator - Gemini);
+        J -- Final Answer --> G;
+        G -- Sends Answer --> F;
     end
 ```
 
@@ -72,11 +66,17 @@ graph TD
     ```
 
 2.  **Build the Knowledge Base:**
-    The `synthesize_knowledge.py` script is used to build the knowledge base from the chat history. To run the script, use the following command:
+    The data pipeline consists of three steps that should be run in order:
     ```bash
+    # 1. Extract raw message history from Telegram
+    python -m src.scripts.extract_history
+
+    # 2. Process raw messages into structured conversations
+    python -m src.scripts.process_data
+
+    # 3. Synthesize conversations into knowledge nuggets and store them in the DB
     python -m src.scripts.synthesize_knowledge
     ```
-    This script will process the chat history, generate knowledge nuggets, and store them in the vector database.
 
 3.  **Run the Telegram Bot:**
     Once the knowledge base has been built, you can start the Telegram bot by running the following command:

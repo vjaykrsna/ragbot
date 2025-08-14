@@ -21,8 +21,8 @@ Below is a Mermaid diagram illustrating the complete system architecture:
 graph TD
     subgraph "Offline Data Processing Pipeline"
         A[Telegram Group] -- Raw Chat Data --> B(Data Extractor - Telethon);
-        B -- Raw Messages --> C{Conversation Thread Builder};
-        C -- Grouped Threads --> D(Knowledge Synthesizer - Gemini);
+        B -- Raw Messages (.jsonl) --> C{Streaming Data Processor};
+        C -- Sorted & Grouped Conversations --> D(Knowledge Synthesizer - Gemini);
         D -- Knowledge Nuggets --> E[Vector Database - ChromaDB];
     end
 
@@ -57,9 +57,10 @@ The offline pipeline is a multi-step process that transforms raw, unstructured c
 -   **Tool:** `Python`
 -   **Script:** `src/scripts/process_data.py`
 -   **Process:**
-    1.  The `process_data.py` script reads the raw JSON data from the previous step.
-    2.  It groups messages into conversation threads based on reply chains and temporal proximity. This is a crucial step for providing context to the LLM.
-    3.  The output is a structured JSON file (`processed_conversations.json`) containing a list of these conversation threads.
+    1.  The `process_data.py` script reads the raw `.jsonl` files in a streaming fashion.
+    2.  It performs an external sort on the messages to handle large volumes of data without high memory usage.
+    3.  It then groups messages into conversation threads based on reply chains and temporal proximity.
+    4.  The output is a structured JSON file (`processed_conversations.json`) containing a list of these conversation threads.
 
 ### 3.3. Knowledge Synthesis
 
@@ -69,7 +70,7 @@ The offline pipeline is a multi-step process that transforms raw, unstructured c
     1.  The `synthesize_knowledge.py` script iterates through the processed conversation threads.
     2.  For each thread, it constructs a detailed prompt using the template in `docs/knowledge_synthesis_prompt.md`.
     3.  It sends the prompt to the Gemini API to generate a "Knowledge Nugget" that conforms to the `docs/knowledge_nugget_schema.md`.
-    4.  The `topic_summary` of the generated nugget is then embedded using the Gemini embedding model.
+    4.  The `detailed_analysis` of the generated nugget is then embedded using the Gemini embedding model.
     5.  Finally, the embedding and the full nugget (as metadata) are stored in the ChromaDB vector database.
 
 ## 4. Knowledge Nugget Schema
@@ -86,15 +87,14 @@ A "Knowledge Nugget" is a JSON object with the following structure:
 
 ```json
 {
-  "nugget_id": "string",
+  "topic": "string",
+  "timestamp": "string <ISO 8601>",
   "topic_summary": "string",
   "detailed_analysis": "string",
-  "status": "string <enum: 'FACT', 'SPECULATION', 'OUTDATED', 'COMMUNITY_OPINION'>",
+  "status": "string <enum: 'FACT', 'SPECULATION', 'COMMUNITY_OPINION'>",
   "keywords": ["string"],
-  "first_message_timestamp": "string <ISO 8601>",
-  "last_message_timestamp": "string <ISO 8601>",
   "source_message_ids": ["integer"],
-  "user_ids_involved": ["integer"]
+  "user_ids_involved": ["string"]
 }
 ```
 
@@ -102,23 +102,22 @@ A "Knowledge Nugget" is a JSON object with the following structure:
 
 | Field Name | Type | Description | Example |
 | :--- | :--- | :--- | :--- |
-| `nugget_id` | String | A unique identifier for the knowledge nugget (e.g., a UUID). | `"kn_a1b2c3d4"` |
-| `topic_summary` | String | A concise, one-sentence summary of the core topic or question. This is ideal for embedding. | `"How to configure the Oracle Cloud Free Tier for a Telegram bot."` |
-| `detailed_analysis` | String | A comprehensive, multi-sentence explanation derived from the conversation. This will be the primary content returned to the user. | `"Users confirmed that the best approach is to use an 'Always Free' Ampere A1 Compute instance. Key steps include setting up the OS, installing Python via pyenv, and using a process manager like systemd to keep the bot running..."` |
+| `topic` | String | A short, descriptive title for the conversation topic. | `"Oracle Cloud Free Tier Setup"` |
+| `timestamp` | String | The ISO 8601 timestamp of the **last** message in the conversation, indicating recency. | `"2025-08-01T12:45:00Z"` |
+| `topic_summary` | String | A concise, one-sentence summary of the core topic or question. | `"How to configure the Oracle Cloud Free Tier for a Telegram bot."` |
+| `detailed_analysis` | String | A comprehensive, multi-sentence explanation derived from the conversation. This is the primary content returned to the user. | `"Users confirmed that the best approach is to use an 'Always Free' Ampere A1 Compute instance..."` |
 | `status` | Enum | The reliability of the information. | `"FACT"` |
 | `keywords` | Array[String] | A list of key terms and entities to aid in keyword-based or hybrid search. | `["oracle cloud", "free tier", "deployment", "systemd"]` |
-| `first_message_timestamp` | String | The ISO 8601 timestamp of the first message in the source conversation thread. | `"2025-08-01T10:30:00Z"` |
-| `last_message_timestamp` | String | The ISO 8601 timestamp of the last message, indicating how recent the information is. | `"2025-08-01T12:45:00Z"` |
-| `source_message_ids` | Array[Int] | An array of message IDs from `processed_conversations.json` that were used to generate this nugget. | `[101, 102, 105, 110]` |
-| `user_ids_involved` | Array[Int] | Anonymized user IDs of the participants, useful for future analysis on who provides reliable information. | `[1, 5, 12]` |
+| `source_message_ids` | Array[Int] | An array of message IDs from the source conversation that were used to generate this nugget. | `[101, 102, 105, 110]` |
+| `user_ids_involved` | Array[String] | Anonymized user IDs (e.g., "User_1") of the participants. | `["User_1", "User_5", "User_12"]` |
 
 ### 4.4. ChromaDB Storage Strategy
 
 To effectively leverage the Knowledge Nugget schema in our RAG pipeline, we will adopt the following storage strategy in ChromaDB:
 
--   **Document for Embedding:** The `topic_summary` field will be used as the primary document for generating embeddings. Its concise and focused nature is ideal for creating dense vectors that excel at semantic similarity search.
+-   **Document for Embedding:** The `detailed_analysis` field will be used as the primary document for generating embeddings. It provides a richer context for semantic search.
 -   **Metadata:** All other fields from the schema will be stored in the metadata payload associated with each embedding.
--   **ID:** The `nugget_id` will be used as the unique identifier for each entry in the collection.
+-   **ID:** A dynamically generated UUID will be used as the unique identifier for each entry in the collection.
 
 ## 5. Live RAG Pipeline
 
