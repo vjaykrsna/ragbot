@@ -31,28 +31,26 @@ Each object in your output array **MUST** be a valid JSON object matching this s
   "timestamp": "string <ISO 8601>",
   "topic_summary": "string",
   "detailed_analysis": "string",
-  "status": "string <enum: 'FACT', 'SPECULATION', 'OUTDATED', 'COMMUNITY_OPINION'>",
+  "status": "string <enum: 'FACT', 'SPECULATION', 'COMMUNITY_OPINION'>",
   "keywords": ["string"],
   "source_message_ids": ["integer"],
-  "user_ids_involved": ["integer"]
+  "user_ids_involved": ["string"]
 }
 ```
 
 ### Field Instructions:
 
--   `nugget_id`: Use the placeholder string `"uuid-placeholder"`. The calling script will generate the actual UUID.
 -   `topic`: A short, descriptive title for the conversation topic. This field is **MANDATORY**.
 -   `timestamp`: The timestamp of the **last** message in the conversation, in ISO 8601 format. This field is **MANDATORY**.
--   `topic_summary`: A **single, concise sentence** that summarizes the core topic. This is critical for embedding and search.
--   `detailed_analysis`: A **comprehensive, multi-sentence paragraph** that explains the topic in detail. Synthesize the answer or solution from the conversation.
+-   `topic_summary`: A **single, concise sentence** that summarizes the core topic.
+-   `detailed_analysis`: A **comprehensive, multi-sentence paragraph** that explains the topic in detail. This is the primary content for embedding and retrieval.
 -   `status`: Classify the information's reliability:
     -   `FACT`: The information is presented as a verifiable fact or a widely accepted solution.
     -   `COMMUNITY_OPINION`: The information is a consensus or a collection of opinions from the community.
     -   `SPECULATION`: The information is a hypothesis, a question without a clear answer, or a guess.
-    -   `OUTDATED`: The information, while once correct, is likely no longer valid (e.g., refers to an old version or a deprecated feature).
 -   `keywords`: Extract 3-5 key technical terms or entities from the conversation.
--   `source_message_ids`: Create an array of all `message_id`s from the input conversation.
--   `user_ids_involved`: Create an array of all unique, anonymized `user_id`s from the input conversation.
+-   `source_message_ids`: Create an array of all `id`s from the input conversation.
+-   `user_ids_involved`: Create an array of all unique, anonymized `sender_id`s from the input conversation.
 
 ---
 
