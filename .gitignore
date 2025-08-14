@@ -1,18 +1,32 @@
-# Environments
-.env
-.venv
-.idea
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Data and Knowledge Base
-/data/
+# Environment variables
+.env
+.venv
+
+# IDEs and editors
+.idea/
+.vscode/
+
+# Databases and Session Files
 /knowledge_base/
-/ragbot_session.session
+*.session
+*.session-journal
 
-# Logs
+# Data files
+/data/
+
+# Log files
 /logs/
 *.log
 
-# LiteLLM
+# LiteLLM cache
 .litellm/
+
+# Progress tracking files
+last_msg_ids.json
+synthesis_progress.json
