@@ -152,10 +152,10 @@ This is the most critical part of the pipeline, where we leverage the rich metad
     1.  The retrieved nuggets are then processed by a custom re-ranking algorithm.
     2.  **Filtering:** Any nuggets with a `status` of `'OUTDATED'` are removed from consideration.
     3.  **Re-ranking:** The remaining nuggets are assigned a score based on a weighted combination of:
-        -   **Recency:** A decay function is applied based on the `last_message_timestamp`. More recent nuggets receive a higher score.
+        -   **Recency:** A granular scoring mechanism is applied based on the `last_message_timestamp`. More recent nuggets receive a higher score.
         -   **Status:** A predefined weight is assigned to each `status` (e.g., `FACT` > `COMMUNITY_OPINION` > `SPECULATION`).
         -   **Semantic Score:** The original similarity score from ChromaDB is also factored in.
-    4.  The nuggets are then re-sorted based on this new score, and the top-n (e.g., n=3) are selected as the final context.
+    4.  The nuggets are then re-sorted based on this new score, and the top-n (e.g., n=5) are selected as the final context. The weights for each score component are configurable in `src/utils/config.py`.
 
 ### 5.3. Response Generation
 
