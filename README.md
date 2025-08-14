@@ -68,20 +68,20 @@ graph TD
 1.  **Start the LiteLLM Proxy:**
     The LiteLLM proxy is used to manage the Gemini API keys and provide a single endpoint for the application. To start the proxy, run the following command in a separate terminal:
     ```bash
-    litellm --config litellm_config.yaml
+    litellm --config src/utils/litellm_config.yaml
     ```
 
 2.  **Build the Knowledge Base:**
     The `synthesize_knowledge.py` script is used to build the knowledge base from the chat history. To run the script, use the following command:
     ```bash
-    python synthesize_knowledge.py
+    python -m src.scripts.synthesize_knowledge
     ```
     This script will process the chat history, generate knowledge nuggets, and store them in the vector database.
 
 3.  **Run the Telegram Bot:**
     Once the knowledge base has been built, you can start the Telegram bot by running the following command:
     ```bash
-    python bot.py
+    python -m src.bot.main
     ```
 
 ## Deployment
