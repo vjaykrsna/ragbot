@@ -11,9 +11,10 @@ import socket
 
 import yaml
 
-from src.utils.logger import setup_logging
+from src.core.app import initialize_app
 
-setup_logging()
+# Initialize the application context
+initialize_app()
 logger = logging.getLogger(__name__)
 
 

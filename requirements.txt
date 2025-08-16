@@ -3,7 +3,12 @@ litellm>=1.75.5.post1
 pyrate_limiter>=3.9.0
 python-dotenv>=1.1.1
 python-telegram-bot>=22.3
+pydantic>=2.8.2
+pydantic-settings>=2.3.4
 python_dateutil>=2.9.0.post0
 rich>=14.1.0
 Telethon>=1.40.0
 tqdm>=4.67.1
+
+punq>=0.5.0
+structlog>=24.1.0

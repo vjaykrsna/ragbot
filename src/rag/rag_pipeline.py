@@ -5,16 +5,16 @@ from typing import Any, Dict, List
 import chromadb
 from chromadb.api.models.Collection import Collection
 
-from src.utils import config, litellm_client
-from src.utils.logger import setup_logging
+from src.core.settings import AppSettings
+from src.utils import litellm_client
 
-setup_logging()
 logger = logging.getLogger(__name__)
 
 
 class LiteLLMEmbeddingFunction:
     """Wrapper for litellm.embed to conform to ChromaDB's interface."""
-    def __init__(self, model_name="gemini-embedding-model"):
+
+    def __init__(self, model_name: str):
         self._model_name = model_name
 
     def __call__(self, input: List[str]) -> List[List[float]]:
@@ -23,45 +23,35 @@ class LiteLLMEmbeddingFunction:
     def name(self) -> str:
         return self._model_name
 
+
 class RAGPipeline:
-    """Retrieval-Augmented Generation pipeline.
+    """Retrieval-Augmented Generation pipeline."""
 
-    Responsible for querying the vector DB and asking the LLM for final
-    responses. Designed to be used from sync code; the heavy LLM calls
-    are blocking and should be executed in an executor when called from
-    an async context.
-    """
-
-    def __init__(self) -> None:
+    def __init__(self, settings: AppSettings) -> None:
+        self.settings = settings
         try:
             self.db_client: chromadb.Client = chromadb.PersistentClient(
-                path=config.DB_PATH
+                path=self.settings.paths.db_path
             )
-            embedding_function = LiteLLMEmbeddingFunction()
+            embedding_function = LiteLLMEmbeddingFunction(
+                model_name=self.settings.litellm.embedding_model_name
+            )
             self.collection: Collection = self.db_client.get_or_create_collection(
-                name=config.COLLECTION_NAME,
-                embedding_function=embedding_function
+                name=self.settings.rag.collection_name,
+                embedding_function=embedding_function,
             )
             logger.info(
                 "Connected to ChromaDB collection '%s' with %d items.",
-                config.COLLECTION_NAME,
+                self.settings.rag.collection_name,
                 self.collection.count(),
             )
         except Exception:
             logger.exception(
                 "Failed to connect to ChromaDB at path '%s' and collection '%s'.",
-                config.DB_PATH,
-                config.COLLECTION_NAME,
+                self.settings.paths.db_path,
+                self.settings.rag.collection_name,
             )
             raise
-
-# Initialize litellm client via central config helper.
-        try:
-            from src.utils import config as _cfg
-
-            _cfg.initialize_litellm_client_stub()
-        except Exception:
-            logger.exception("Failed to initialize litellm client via config helper")
 
     def embed_query(self, query_text: str) -> List[float]:
         """Generate embedding for the query. Returns vector as list[float]."""
@@ -120,15 +110,16 @@ class RAGPipeline:
                 except Exception:
                     pass
 
-            status_score = config.STATUS_WEIGHTS.get(
-                nugget.get("status"), config.STATUS_WEIGHTS["DEFAULT"]
+            status_score = self.settings.rag.status_weights.get(
+                nugget.get("status", "DEFAULT"),
+                self.settings.rag.status_weights["DEFAULT"],
             )
             semantic_score = 1.0 - distances[i] if i < len(distances) else 0.0
 
             final = (
-                semantic_score * config.SEMANTIC_SCORE_WEIGHT
-                + recency_score * config.RECENCY_SCORE_WEIGHT
-                + status_score * config.STATUS_SCORE_WEIGHT
+                semantic_score * self.settings.rag.semantic_score_weight
+                + recency_score * self.settings.rag.recency_score_weight
+                + status_score * self.settings.rag.status_score_weight
             )
             scored.append((nugget, final))
 
@@ -185,6 +176,11 @@ class RAGPipeline:
 
 
 if __name__ == "__main__":
-    rp = RAGPipeline()
+    from src.core.app import initialize_app
+
+    # This is for demonstration and testing purposes.
+    # In a real application, the settings would be passed from the entrypoint.
+    app_settings = initialize_app()
+    rp = RAGPipeline(app_settings)
     q = "What was the discussion about regarding the project architecture?"
     print(rp.query(q))

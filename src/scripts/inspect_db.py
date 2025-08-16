@@ -7,10 +7,11 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from src.utils import config
-from src.utils.logger import setup_logging
+from src.core.app import initialize_app
 
-setup_logging()
+# Initialize the application context
+app_context = initialize_app()
+settings = app_context.settings
 
 console = Console()
 

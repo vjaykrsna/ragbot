@@ -12,11 +12,9 @@ from telegram.ext import (
     filters,
 )
 
-from src.core.rag_pipeline import RAGPipeline
-from src.utils import config
-from src.utils.logger import setup_logging
+from src.core.app import initialize_app
+from src.rag.rag_pipeline import RAGPipeline
 
-setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -66,17 +64,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def main() -> None:
     """Initialize and run the Telegram bot application."""
-    if not config.TELEGRAM_BOT_TOKEN:
+    settings = initialize_app()
+
+    if not settings.telegram.bot_token:
         logger.error("TELEGRAM_BOT_TOKEN is not set; aborting bot startup.")
         return
 
     application: Application = (
-        Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+        Application.builder().token(settings.telegram.bot_token).build()
     )
 
-# Initialize the RAG pipeline once (blocking) and add it to bot_data
+    # Initialize the RAG pipeline once (blocking) and add it to bot_data
     try:
-        rag_pipeline = RAGPipeline()
+        rag_pipeline = RAGPipeline(settings)
         application.bot_data["rag_pipeline"] = rag_pipeline
         logger.info("RAG pipeline initialized successfully.")
     except Exception:
