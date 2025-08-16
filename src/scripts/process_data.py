@@ -287,7 +287,13 @@ class ActiveConversation:
 def save_conversation_stream(fh, conv: ActiveConversation):
     # Write a conversation as a JSON envelope per line containing metadata
     # to support freshness, provenance and quick verification.
-    conv_texts = [m.get("content", "") for m in conv.messages]
+    conv_texts = []
+    for m in conv.messages:
+        content = m.get("content", "")
+        if isinstance(content, dict):
+            # Handle cases where content is a dict, like in poll messages
+            content = content.get("text", "")
+        conv_texts.append(content or "")
     joined = "\n".join(conv_texts)
     ingestion_hash = hashlib.md5(joined.encode("utf-8")).hexdigest()
     # Collect unique source files and source names if present
