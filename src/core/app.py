@@ -7,10 +7,9 @@ main.py, process_data.py) should call `initialize_app` to get a fully
 configured application environment.
 """
 
-import punq
 import structlog
 
-from src.config.settings import AppSettings, load_settings
+from src.config.settings import load_settings
 from src.core.container import create_container
 from src.core.logger import setup_logging
 

@@ -11,8 +11,7 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime
-from typing import Generator, Dict, Any, List, Tuple
+from typing import Any, Dict, Generator, List, Tuple
 
 from dateutil.parser import isoparse
 
@@ -76,13 +75,19 @@ class ExternalSorter:
                 if len(buf) >= self.chunk_size:
                     flush_chunk()
             except (ValueError, TypeError):
-                self.logger.warning(f"Skipping record with invalid date: {rec.get('date')}")
+                self.logger.warning(
+                    f"Skipping record with invalid date: {rec.get('date')}"
+                )
 
         flush_chunk()
-        self.logger.info(f"Prepared {len(chunk_paths)} sorted chunk(s) from {total} messages.")
+        self.logger.info(
+            f"Prepared {len(chunk_paths)} sorted chunk(s) from {total} messages."
+        )
         return chunk_paths
 
-    def _merge_sorted_chunks(self, chunk_paths: List[str]) -> Generator[Dict[str, Any], None, None]:
+    def _merge_sorted_chunks(
+        self, chunk_paths: List[str]
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Performs a k-way merge of the sorted chunk files.
         """

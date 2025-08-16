@@ -22,7 +22,7 @@ def display_nugget_details(nuggets: Dict[str, Any]):
         console.print(Panel("No nuggets found to display.", style="yellow"))
         return
 
-# Sort nuggets by timestamp in descending order to get the most recent
+    # Sort nuggets by timestamp in descending order to get the most recent
     sorted_indices = sorted(
         range(len(nuggets["metadatas"])),
         key=lambda i: nuggets["metadatas"][i].get("timestamp", ""),
@@ -59,15 +59,15 @@ def inspect_database(limit: int):
     try:
         console.print(
             Panel(
-                f"Connecting to DB at [bold cyan]{config.DB_PATH}[/] and collection [bold cyan]{config.COLLECTION_NAME}[/]",
+                f"Connecting to DB at [bold cyan]{settings.paths.db_path}[/] and collection [bold cyan]{settings.rag.collection_name}[/]",
                 title="Database Inspection",
                 expand=False,
             )
         )
-        client = chromadb.PersistentClient(path=config.DB_PATH)
+        client = chromadb.PersistentClient(path=settings.paths.db_path)
 
         try:
-            collection = client.get_collection(name=config.COLLECTION_NAME)
+            collection = client.get_collection(name=settings.rag.collection_name)
             count = collection.count()
 
             summary_text = Text("Total items in collection: ", style="default")
@@ -75,17 +75,17 @@ def inspect_database(limit: int):
             console.print(summary_text)
 
             if count > 0:
-# Fetch more items than needed to ensure we can sort by recency
+                # Fetch more items than needed to ensure we can sort by recency
                 fetch_limit = min(count, max(limit, 50))
                 recent_nuggets = collection.get(
                     include=["metadatas", "documents"], limit=fetch_limit
                 )
-# Display the most recent 'limit' nuggets
+                # Display the most recent 'limit' nuggets
                 display_nugget_details(recent_nuggets)
 
         except Exception:
             console.print(
-                f"Could not inspect collection '{config.COLLECTION_NAME}'. It might not exist yet.",
+                f"Could not inspect collection '{settings.rag.collection_name}'. It might not exist yet.",
                 style="bold red",
             )
 
@@ -98,8 +98,10 @@ def inspect_database(limit: int):
 def delete_collection(collection_name: str):
     """Deletes a specific collection from the database."""
     try:
-        console.print(f"Connecting to database at path: [cyan]{config.DB_PATH}[/]")
-        client = chromadb.PersistentClient(path=config.DB_PATH)
+        console.print(
+            f"Connecting to database at path: [cyan]{settings.paths.db_path}[/]"
+        )
+        client = chromadb.PersistentClient(path=settings.paths.db_path)
 
         console.print(
             f"--- Deleting Collection: '{collection_name}' ---", style="bold yellow"
@@ -141,7 +143,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.delete:
-# A simple confirmation prompt
+        # A simple confirmation prompt
         response = input(
             f"Are you sure you want to delete the collection '{args.delete}'? This cannot be undone. (y/n): "
         )

@@ -4,6 +4,7 @@ import os
 import sys
 
 import structlog
+
 from src.config.settings import AppSettings
 
 
