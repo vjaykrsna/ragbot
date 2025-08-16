@@ -9,28 +9,48 @@ LOG_BACKUP_COUNT = 3
 
 
 def setup_logging() -> None:
-    """Set up centralized logging for the application.
-
-    Creates a rotating file handler (DEBUG+) and a console handler (INFO+).
-    This is idempotent and safe to call multiple times.
     """
-    # Ensure logs directory exists
+    Creates a rotating file handler (DEBUG+) and a console handler (INFO+).
+    """
+# Ensure logs directory exists
     os.makedirs(LOG_DIR, exist_ok=True)
 
     log_formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] [%(name)s] - %(message)s"
     )
 
-    # Configure root logger
+# Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
 
-    # Console handler (INFO level)
+# Allow overriding console level via env var for quick control
+    console_level_name = os.getenv("CHATBOT_CONSOLE_LEVEL", "INFO").upper()
+    console_level = getattr(logging, console_level_name, logging.INFO)
+
+# Console handler (configurable, default INFO)
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(console_level)
     console_handler.setFormatter(log_formatter)
 
-    # Rotating file handler (DEBUG level)
+# Quiet noisy third-party loggers on the console while preserving file logs (th...
+    noisy_loggers = [
+        "telethon",
+        "asyncio",
+        "urllib3",
+        "httpx",
+        "chardet",
+        "litellm",
+    ]
+    for logger_name in noisy_loggers:
+        l = logging.getLogger(logger_name)
+# Set higher level so debug/verbose messages don't appear on console
+        l.setLevel(logging.WARNING)
+# Remove any handlers third-party libs may have attached so they don't bypass t...
+        for h in list(l.handlers):
+            l.removeHandler(h)
+        l.propagate = True
+
+# Rotating file handler (DEBUG level)
     log_file_path = os.path.join(LOG_DIR, "chatbot.log")
     file_handler = logging.handlers.RotatingFileHandler(
         log_file_path,
@@ -40,7 +60,7 @@ def setup_logging() -> None:
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(log_formatter)
 
-    # Remove existing handlers to avoid duplication when reloading
+# Remove existing handlers to avoid duplication when reloading
     for h in list(root_logger.handlers):
         root_logger.removeHandler(h)
 

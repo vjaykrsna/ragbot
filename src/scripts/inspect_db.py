@@ -21,7 +21,7 @@ def display_nugget_details(nuggets: Dict[str, Any]):
         console.print(Panel("No nuggets found to display.", style="yellow"))
         return
 
-    # Sort nuggets by timestamp in descending order to get the most recent
+# Sort nuggets by timestamp in descending order to get the most recent
     sorted_indices = sorted(
         range(len(nuggets["metadatas"])),
         key=lambda i: nuggets["metadatas"][i].get("timestamp", ""),
@@ -74,12 +74,12 @@ def inspect_database(limit: int):
             console.print(summary_text)
 
             if count > 0:
-                # Fetch more items than needed to ensure we can sort by recency
+# Fetch more items than needed to ensure we can sort by recency
                 fetch_limit = min(count, max(limit, 50))
                 recent_nuggets = collection.get(
                     include=["metadatas", "documents"], limit=fetch_limit
                 )
-                # Display the most recent 'limit' nuggets
+# Display the most recent 'limit' nuggets
                 display_nugget_details(recent_nuggets)
 
         except Exception:
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.delete:
-        # A simple confirmation prompt
+# A simple confirmation prompt
         response = input(
             f"Are you sure you want to delete the collection '{args.delete}'? This cannot be undone. (y/n): "
         )

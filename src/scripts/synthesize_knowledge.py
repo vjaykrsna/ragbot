@@ -29,7 +29,7 @@ from src.utils import config, litellm_client
 from src.utils import config as _config
 from src.utils.logger import setup_logging
 
-# Local file cache disabled by default for production. Rely on LiteLLM proxy + Redis.
+# Local file cache disabled by default for production.
 CACHE_DIR = None
 
 
@@ -38,22 +38,22 @@ def _hash_text(s: str) -> str:
 
 
 def completion_cache_get(key: str) -> Optional[str]:
-    # local completion cache intentionally disabled
+# local completion cache intentionally disabled
     return None
 
 
 def completion_cache_set(key: str, value: str) -> None:
-    # no-op when local caching is disabled
+# no-op when local caching is disabled
     return
 
 
 def embedding_cache_get(key: str) -> Optional[List[float]]:
-    # local embedding cache intentionally disabled
+# local embedding cache intentionally disabled
     return None
 
 
 def embedding_cache_set(key: str, emb: List[float]) -> None:
-    # no-op when local caching is disabled
+# no-op when local caching is disabled
     return
 
 
@@ -221,10 +221,10 @@ def generate_nuggets_batch(
     conv_batch: List[Dict[str, Any]], prompt_template: str
 ) -> List[Dict[str, Any]]:
     """Generates a batch of knowledge nuggets from a list of conversations."""
-    # Compact conversations to reduce token usage: keep only necessary fields
+# Compact conversations to reduce token usage: keep only necessary fields
     compact_batch = []
     for conv in conv_batch:
-        # conv may be an envelope created earlier; extract the conversation messages
+# conv may be an envelope created earlier; extract the conversation messages
         conv_msgs = conv.get("conversation") or conv.get("messages") or conv
         compact_msgs = []
         for m in conv_msgs:
@@ -248,7 +248,7 @@ def generate_nuggets_batch(
     formatted_batch = json.dumps(compact_batch, separators=(",", ":"))
     prompt_payload = f"{prompt_template}\n\n**Input Conversation Batch:**\n```json\n{formatted_batch}\n```"
 
-    # Call the LLM and retry a few times if the response is malformed.
+# Call the LLM and retry a few times if the response is malformed.
     attempts = 3
     response = None
     response_content = ""
@@ -305,13 +305,13 @@ def generate_nuggets_batch(
                 "source_message_ids",
                 "user_ids_involved",
             ]
-            # Accept additional optional fields: ingestion_timestamp, source_names, normalized_values
+# Accept additional optional fields: ingestion_timestamp, source_names, normalized_values
             if all(k in nugget for k in required_keys):
-                # Ensure optional normalized_values exists as list if missing
+# Ensure optional normalized_values exists as list if missing
                 if "normalized_values" not in nugget:
                     nugget["normalized_values"] = []
                 if "ingestion_timestamp" not in nugget:
-                    # default to now if LLM didn't add one
+# default to now if LLM didn't add one
                     nugget["ingestion_timestamp"] = datetime.now(
                         timezone.utc
                     ).isoformat()
@@ -341,7 +341,7 @@ def embed_nuggets_batch(nuggets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         logging.warning("No valid documents to embed in the batch.")
         return []
 
-    # For cost savings: use an embedding cache keyed by the md5 of the document text.
+# For cost savings: use an embedding cache keyed by the md5 of the document text.
     docs_to_embed = []
     doc_indices = []
 
@@ -350,13 +350,13 @@ def embed_nuggets_batch(nuggets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         docs_to_embed.append(text)
         doc_indices.append(i)
 
-    # Try embedding call with a couple retries to handle transient proxy/provider issues
+# Try embedding call with a couple retries to handle transient proxy/provider issues
     embed_attempts = 2
     embedding_response = None
     for attempt in range(embed_attempts):
         emb = litellm_client.embed(docs_to_embed, max_retries=1)
         if emb is not None:
-            # emulate the previous response structure
+# emulate the previous response structure
             embedding_response = {"data": [[{"embedding": e}] for e in emb]}
         else:
             embedding_response = None
@@ -384,7 +384,7 @@ def embed_nuggets_batch(nuggets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     for idx, emb in zip(doc_indices, returned):
         valid_nuggets[idx]["embedding"] = emb
-        # Attach embedding metadata
+# Attach embedding metadata
         nugget = valid_nuggets[idx]
         nugget.setdefault("meta", {})
         nugget["meta"]["embedding_model"] = _config.EMBEDDING_MODEL_PROXY
@@ -409,9 +409,9 @@ def store_nuggets_batch(
             for n in nuggets_with_embeddings:
                 meta = n.copy()
                 del meta["embedding"]
-                # flatten certain large list fields to avoid bloating Chroma metadata
+# flatten certain large list fields to avoid bloating Chroma metadata
                 if isinstance(meta.get("normalized_values"), list):
-                    # keep a small summary count and store full list as JSON string only if small
+# keep a small summary count and store full list as JSON string only if small
                     nv = meta["normalized_values"]
                     meta["normalized_values_count"] = len(nv)
                     if len(nv) <= 10:
@@ -420,7 +420,7 @@ def store_nuggets_batch(
                         meta["normalized_values"] = json.dumps(nv[:10])
                 for key, value in list(meta.items()):
                     if isinstance(value, list) and key != "normalized_values":
-                        # keep short lists small; stringify otherwise
+# keep short lists small; stringify otherwise
                         if len(value) > 10:
                             meta[key] = json.dumps(value[:10])
                         else:
@@ -441,8 +441,7 @@ def store_nuggets_batch(
         chromadb.errors.DuplicateIDError,
     ) as e:
         logging.error(f"ChromaDB Error storing nuggets: {e}", exc_info=True)
-        # Optionally, save the failed batch for inspection
-        # save_failed_batch(nuggets_with_embeddings, str(e))
+# Optionally, save the failed batch for inspection save_failed_batch(nuggets_with_embeddings, str(e)
         return 0
     except Exception as e:
         logging.error(
@@ -463,7 +462,7 @@ def process_conversation_batch(
     nuggets_with_embeddings = embed_nuggets_batch(nuggets)
     if not nuggets_with_embeddings:
         return 0
-    # Run a lightweight numeric verifier to reduce hallucinated numbers.
+# Run a lightweight numeric verifier to reduce hallucinated numbers.
     verified = run_numeric_verifier(nuggets_with_embeddings, batch)
 
     num_stored = store_nuggets_batch(collection, verified)
@@ -479,10 +478,10 @@ def run_numeric_verifier(
     normalized value in the source, we mark its confidence as 'model-only' and
     add a flag to the nugget metadata so the UI can surface it.
     """
-    # Build a quick lookup of numbers from source conversations
+# Build a quick lookup of numbers from source conversations
     source_numbers = defaultdict(list)
     for conv in conversations:
-        # conversations may be envelopes produced by process_data
+# conversations may be envelopes produced by process_data
         conv_msgs = conv.get("conversation") or conv.get("messages") or []
         for m in conv_msgs:
             nvals = m.get("normalized_values") or []
@@ -532,21 +531,21 @@ def synthesize_and_populate(
         for i in range(start_index, len(conversations), config.BATCH_SIZE)
     ]
 
-    # Compute a stable hash for each batch so we can skip work already done.
+# Compute a stable hash for each batch so we can skip work already done.
     def batch_hash(batch: List[Dict[str, Any]]) -> str:
-        # Use concatenation of ingestion_hashes from envelopes (or messages fallback)
+# Use concatenation of ingestion_hashes from envelopes (or messages fallback)
         parts = []
         for conv in batch:
             ih = conv.get("ingestion_hash")
             if not ih:
-                # fallback: compute from concatenated messages
+# fallback: compute from concatenated messages
                 msgs = conv.get("conversation") or conv.get("messages") or []
                 joined = "".join(m.get("content", "") for m in msgs)
                 ih = _hash_text(joined)
             parts.append(ih)
         return _hash_text("|".join(parts))
 
-    # load processed hashes to avoid re-synthesizing unchanged conversation envelopes
+# load processed hashes to avoid re-synthesizing unchanged conversation envelopes
     processed_hashes = set()
     try:
         ph = os.path.join(config.PROCESSED_DATA_DIR, config.PROCESSED_HASHES_FILE)
@@ -580,7 +579,7 @@ def synthesize_and_populate(
                 try:
                     num_stored = future.result()
                     if num_stored > 0:
-                        # mark this batch as processed by its batch hash
+# mark this batch as processed by its batch hash
                         bh = batch_index_to_hash.get(batch_index)
                         if bh:
                             processed_hashes.add(bh)
@@ -600,7 +599,7 @@ def synthesize_and_populate(
                 pbar.update(1)
                 pbar.set_postfix({"Stored": f"{total_nuggets_stored}"})
 
-    # persist processed hashes
+# persist processed hashes
     try:
         php = os.path.join(config.PROCESSED_DATA_DIR, config.PROCESSED_HASHES_FILE)
         with open(php, "w", encoding="utf-8") as f:
