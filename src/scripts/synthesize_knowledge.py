@@ -33,8 +33,8 @@ from litellm import (
 from pyrate_limiter import Duration, Limiter, Rate
 from tqdm import tqdm
 
-from src.core.app import initialize_app
 from src.config.settings import AppSettings
+from src.core.app import initialize_app
 from src.services import litellm_client
 
 logger = logging.getLogger(__name__)
@@ -418,11 +418,8 @@ class KnowledgeSynthesizer:
             for i, emb in enumerate(returned_embeddings):
                 valid_nuggets[i]["embedding"] = emb
                 nugget = valid_nuggets[i]
-                nugget.setdefault("meta", {})
-                nugget["meta"]["embedding_model"] = (
-                    self.settings.litellm.embedding_model_proxy
-                )
-                nugget["meta"]["embedding_created_at"] = datetime.utcnow().isoformat()
+                nugget["embedding_model"] = self.settings.litellm.embedding_model_proxy
+                nugget["embedding_created_at"] = datetime.now(timezone.utc).isoformat()
 
             return valid_nuggets
 
@@ -464,7 +461,7 @@ class KnowledgeSynthesizer:
                 )
             return len(nuggets_with_embeddings)
         except (
-            chromadb.errors.InvalidDimensionError,
+            ValueError,
             chromadb.errors.DuplicateIDError,
         ) as e:
             logger.error(f"ChromaDB Error storing nuggets: {e}", exc_info=True)
@@ -489,8 +486,6 @@ class KnowledgeSynthesizer:
                         source_numbers[round(float(nv.get("value")), 6)].append(nv)
 
         for nug in nuggets:
-            nug_meta = nug.setdefault("meta", {})
-            nug_meta.setdefault("verification", {})
             mismatches = []
             for nv in nug.get("normalized_values", []):
                 val = nv.get("value")
@@ -502,22 +497,30 @@ class KnowledgeSynthesizer:
                     mismatches.append(nv)
 
             if mismatches:
-                nug_meta["verification"]["numeric_mismatch"] = True
-                nug_meta["verification"]["mismatch_count"] = len(mismatches)
-                nug_meta["confidence"] = nug_meta.get("confidence", "Low")
+                nug["verification_numeric_mismatch"] = True
+                nug["verification_mismatch_count"] = len(mismatches)
+                nug["confidence"] = "Low"
             else:
-                nug_meta["verification"]["numeric_mismatch"] = False
-                nug_meta["confidence"] = nug_meta.get("confidence", "High")
+                nug["verification_numeric_mismatch"] = False
+                nug["confidence"] = "High"
 
         return nuggets
 
     def _save_progress(self, last_processed_index: int) -> None:
-        with open(self.settings.paths.synthesis_progress_file, "w") as f:
+        path = os.path.join(
+            self.settings.paths.processed_data_dir,
+            self.settings.paths.synthesis_progress_file,
+        )
+        with open(path, "w") as f:
             json.dump({"last_processed_index": last_processed_index}, f)
 
     def _load_progress(self) -> int:
+        path = os.path.join(
+            self.settings.paths.processed_data_dir,
+            self.settings.paths.synthesis_progress_file,
+        )
         try:
-            with open(self.settings.paths.synthesis_progress_file, "r") as f:
+            with open(path, "r") as f:
                 return json.load(f).get("last_processed_index", -1)
         except (FileNotFoundError, json.JSONDecodeError):
             return -1
