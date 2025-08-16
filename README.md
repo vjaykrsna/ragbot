@@ -1,5 +1,7 @@
 # Modular RAG Telegram Bot
 
+[![Python CI](https://github.com/your-username/your-repo/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/your-repo/actions/workflows/ci.yml)
+
 This project is a RAG-powered Telegram bot that can answer questions about your chat history. It has been refactored for modularity, maintainability, and scalability, following modern Python best practices.
 
 ## Project Architecture
@@ -32,9 +34,31 @@ source .venv/bin/activate
 
 ### 2. Install Dependencies
 
+For production, install the main dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+For development, install the development dependencies as well, which include tools for testing and code quality:
+```bash
+pip install -r requirements-dev.txt
+```
+
+## Testing
+
+This project uses `pytest` for testing. The tests are located in the `tests/` directory and include both high-level pipeline tests and unit tests for specific modules.
+
+To run the full test suite, run the following command from the root of the project:
+
+```bash
+pytest
+```
+
+### Continuous Integration
+
+This project is equipped with a GitHub Actions CI pipeline that automatically runs all tests and code quality checks on every push and pull request to the `main` branch. This helps ensure that the codebase remains stable and maintainable.
+
+You can see the status of the CI pipeline from the badge at the top of this README.
 
 ### 3. Run the Data Processing Pipeline
 

@@ -5,8 +5,8 @@ from typing import Any, Dict, List
 import chromadb
 from chromadb.api.models.Collection import Collection
 
-from src.core.settings import AppSettings
-from src.utils import litellm_client
+from src.config.settings import AppSettings
+from src.services import litellm_client
 
 logger = logging.getLogger(__name__)
 

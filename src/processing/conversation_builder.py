@@ -8,7 +8,7 @@ conversations based on time, topic, and reply-to links.
 import hashlib
 import logging
 from collections import OrderedDict, deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List
 
 from dateutil.parser import isoparse
@@ -57,7 +57,7 @@ class ActiveConversation:
         msg_dt = isoparse(msg["date"])
         within_gap = (msg_dt - self.last).total_seconds() < time_threshold
         within_window = (msg_dt - self.start).total_seconds() < session_window
-        same_topic = self.topic_id is not None and self.topic_id == msg.get("topic_id")
+        same_topic = self.topic_id == msg.get("topic_id")
 
         if within_window and same_topic and within_gap:
             self._add_message(msg, msg_dt)
@@ -197,7 +197,7 @@ class ConversationBuilder:
         )
 
         return {
-            "ingestion_timestamp": datetime.utcnow().isoformat(),
+            "ingestion_timestamp": datetime.now(timezone.utc).isoformat(),
             "ingestion_hash": ingestion_hash,
             "source_files": source_files,
             "source_names": source_names,
