@@ -34,8 +34,8 @@ from pyrate_limiter import Duration, Limiter, Rate
 from tqdm import tqdm
 
 from src.core.app import initialize_app
-from src.core.settings import AppSettings
-from src.utils import litellm_client
+from src.config.settings import AppSettings
+from src.services import litellm_client
 
 logger = logging.getLogger(__name__)
 
@@ -581,8 +581,8 @@ class KnowledgeSynthesizer:
 
 def main() -> None:
     """Initializes the application and runs the knowledge synthesis pipeline."""
-    settings = initialize_app()
-    synthesizer = KnowledgeSynthesizer(settings)
+    app_context = initialize_app()
+    synthesizer = KnowledgeSynthesizer(app_context.settings)
     synthesizer.run()
 
 
