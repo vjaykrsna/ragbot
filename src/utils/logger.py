@@ -40,6 +40,7 @@ def setup_logging() -> None:
         "httpx",
         "chardet",
         "litellm",
+        "LiteLLM",
     ]
     for logger_name in noisy_loggers:
         l = logging.getLogger(logger_name)
