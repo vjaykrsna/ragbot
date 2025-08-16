@@ -25,9 +25,8 @@ from litellm import (
 from pyrate_limiter import Duration, Limiter, Rate
 from tqdm import tqdm
 
-from src.utils import config
+from src.utils import config, litellm_client
 from src.utils import config as _config
-from src.utils import litellm_client
 from src.utils.logger import setup_logging
 
 # Local file cache disabled by default for production. Rely on LiteLLM proxy + Redis.

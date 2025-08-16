@@ -1,4 +1,2 @@
-black
-isort
-flake8
+ruff
 pre-commit
