@@ -36,9 +36,7 @@ SESSION_WINDOW_SECONDS = getattr(config, "SESSION_WINDOW_SECONDS", 3600)
 setup_logging()
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-# ---------------------------
-# Utilities
-# ---------------------------
+# --------------------------- Utilities ---------------------------
 
 
 def safe_json_loads(line: str) -> Optional[Dict[str, Any]]:
@@ -49,7 +47,7 @@ def safe_json_loads(line: str) -> Optional[Dict[str, Any]]:
 
 
 def parse_dt(dt: str) -> datetime:
-    # RFC/ISO strings supported by isoparse
+# RFC/ISO strings supported by isoparse
     return isoparse(dt)
 
 
@@ -67,9 +65,7 @@ def temp_suffix() -> str:
     return ".jsonl.gz" if USE_GZIP else ".jsonl"
 
 
-# ---------------------------
-# Anonymization map (stable across runs)
-# ---------------------------
+# ------------- Anonymization map (stable across runs) ----------
 
 
 def load_user_map() -> Tuple[Dict[str, str], int]:
@@ -77,7 +73,7 @@ def load_user_map() -> Tuple[Dict[str, str], int]:
         try:
             with open(OUT_USER_MAP_FILE, "r", encoding="utf-8") as f:
                 m = json.load(f)
-                # derive next counter from existing
+# derive next counter from existing
                 max_n = 0
                 for v in m.values():
                     if isinstance(v, str) and v.startswith("User_"):
@@ -98,9 +94,7 @@ def persist_user_map(user_map: Dict[str, str]) -> None:
         json.dump(user_map, f, ensure_ascii=False, indent=2)
 
 
-# ---------------------------
-# Streaming readers
-# ---------------------------
+# ---------------- Streaming readers ------------------------
 
 
 def iter_jsonl_files(raw_dir: str) -> List[str]:
@@ -124,9 +118,7 @@ def iter_messages_from_file(path: str) -> Generator[Dict[str, Any], None, None]:
             yield rec
 
 
-# ---------------------------
-# External sort in chunks
-# ---------------------------
+# ------------- External sort in chunks ------------------
 
 
 def write_sorted_chunks(files: List[str]) -> List[str]:
@@ -169,9 +161,7 @@ def write_sorted_chunks(files: List[str]) -> List[str]:
     return chunk_paths
 
 
-# ---------------------------
-# Merge stage (k-way merge of sorted chunks)
-# ---------------------------
+# ------------ Merge stage (k-way merge of sorted chunks) ------
 
 
 def iter_sorted_records(
@@ -191,7 +181,7 @@ def iter_sorted_records(
             if rec and rec.get("date"):
                 yield (rec["date"], rec)
 
-    # Build a heap of (date, idx, record, iterator)
+# Build a heap of (date, idx, record, iterator)
     heap = []
     generators = [gen(fh) for _, fh in iters]
 
@@ -215,7 +205,7 @@ def iter_sorted_records(
     finally:
         for _, fh in iters:
             fh.close()
-        # Cleanup temp chunks
+# Cleanup temp chunks
         for p, _ in iters:
             try:
                 os.remove(p)
@@ -223,9 +213,7 @@ def iter_sorted_records(
                 pass
 
 
-# ---------------------------
-# Conversation builder (streaming)
-# ---------------------------
+# -------------- Conversation builder (streaming) ----------------
 
 
 class LRUMessageMap(OrderedDict):
@@ -265,7 +253,7 @@ class ActiveConversation:
         within_gap = (msg_dt - self.last).total_seconds() < time_threshold
         within_window = (msg_dt - self.start).total_seconds() < session_window
         same_topic = self.topic_id == msg.get("topic_id")
-        # Relaxed: Prefer topic consistency if available
+# Relaxed: Prefer topic consistency if available
         if within_window and same_topic and within_gap:
             self.messages.append(msg)
             self.id_set.add(msg["id"])
@@ -285,18 +273,17 @@ class ActiveConversation:
 
 
 def save_conversation_stream(fh, conv: ActiveConversation):
-    # Write a conversation as a JSON envelope per line containing metadata
-    # to support freshness, provenance and quick verification.
+# Write a conversation as a JSON envelope
     conv_texts = []
     for m in conv.messages:
         content = m.get("content", "")
         if isinstance(content, dict):
-            # Handle cases where content is a dict, like in poll messages
+# Handle cases where content is a dict, like in poll messages
             content = content.get("text", "")
         conv_texts.append(content or "")
     joined = "\n".join(conv_texts)
     ingestion_hash = hashlib.md5(joined.encode("utf-8")).hexdigest()
-    # Collect unique source files and source names if present
+# Collect unique source files and source names if present
     source_files = list(
         {
             m.get("source_saved_file")
@@ -314,7 +301,7 @@ def save_conversation_stream(fh, conv: ActiveConversation):
         "source_files": source_files,
         "source_names": source_names,
         "conversation": conv.messages,
-        # small derived summary fields to help synthesis without heavy processing
+# small derived summary fields to help synthesis without heavy processing
         "message_count": len(conv.messages),
     }
 
@@ -322,9 +309,7 @@ def save_conversation_stream(fh, conv: ActiveConversation):
     fh.write("\n")
 
 
-# ---------------------------
-# Lightweight numeric/date normalization
-# ---------------------------
+# ----------- Lightweight numeric/date normalization ---------
 NUMBER_RE = re.compile(
     r"(?P<number>\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\b)\s*(?P<unit>%|percent|rs|inr|₹|km|m|kg|k|lakh|crore|million|billion)?",
     re.IGNORECASE,
@@ -340,7 +325,7 @@ def normalize_numbers(text: str) -> List[Dict[str, Any]]:
     for m in NUMBER_RE.finditer(text):
         num = m.group("number")
         unit = (m.group("unit") or "").lower()
-        # normalize 1,234.56 or 1.234,56 -> 1234.56
+# normalize 1,234.56 or 1.234,56 -> 1234.56
         norm = num.replace(",", "")
         try:
             val = float(norm)
@@ -360,9 +345,7 @@ def normalize_numbers(text: str) -> List[Dict[str, Any]]:
     return results
 
 
-# ---------------------------
-# Main pipeline
-# ---------------------------
+# ------------------ Main pipeline ------------------------
 
 
 def main():
@@ -372,17 +355,16 @@ def main():
     if not raw_files:
         return
 
-    # Step 1: chunked external sort
+# Step 1: chunked external sort
     chunk_paths = write_sorted_chunks(raw_files)
     if not chunk_paths:
         logging.warning("No data after chunking. Exiting.")
         return
 
-    # Step 2: iterate sorted records, anonymize on the fly, build conversations
+# Step 2: iterate sorted records, anonymize on the fly, build conversations
     user_map, next_user_num = load_user_map()
 
-    # Output: write conversations as JSONL-of-arrays to keep memory low
-    # At the end, you can post-process to wrap into a single JSON[] if you need strict JSON.
+# Output: write conversations as JSONL-of-arrays to keep memory low
     tmp_out_fd, tmp_out_path = tempfile.mkstemp(
         prefix="conversations_", suffix=".jsonl"
     )
@@ -399,51 +381,51 @@ def main():
     for rec in iter_sorted_records(chunk_paths):
         total_msgs += 1
 
-        # sanitize/anonymize
+# sanitize/anonymize
         sender_id = rec.get("sender_id")
         content = rec.get("content")
         if not sender_id or not content:
             dropped += 1
             continue
 
-        # stable anonymization
+# stable anonymization
         sid = str(sender_id)
         if sid not in user_map:
             user_map[sid] = f"User_{next_user_num}"
             next_user_num += 1
         rec["sender_id"] = user_map[sid]
 
-        # Lightweight numeric/date normalization per message to support later verification
+# Lightweight numeric/date normalization per message to support later verification
         try:
             rec["normalized_values"] = normalize_numbers(content)
         except Exception:
             rec["normalized_values"] = []
 
-        # minimal record normalization (keep fields used downstream)
+# minimal record normalization (keep fields used downstream)
         try:
             _ = parse_dt(rec["date"])
         except Exception:
             dropped += 1
             continue
 
-        # Thread-first: if reply_to is present and we still have its parent, attach to that conversation
+# Thread-first: if reply_to is present and we still have its parent, attach to that conversation
         attached = False
         parent_id = rec.get("reply_to_msg_id")
         parent = msg_map.get_recent(parent_id) if parent_id else None
         if parent is not None and hasattr(parent, "_conv_idx"):
-            # attach to parent's conversation directly
+# attach to parent's conversation directly
             conv_idx = parent._conv_idx  # type: ignore[attr-defined]
             try:
                 conv = active[conv_idx]
                 conv.attach_force(rec)
                 attached = True
             except IndexError:
-                # conversation might have been flushed; fall back to time-based attach
+# conversation might have been flushed; fall back to time-based attach
                 pass
 
-        # If not attached via thread, try to attach by time/topic to the latest few active conversations
+# Try to attach by time/topic to the latest few active conversations
         if not attached:
-            # iterate from right (most recent)
+# iterate from right (most recent)
             for i in range(
                 min(len(active), 200)
             ):  # check last 200 active convs to stay cheap
@@ -452,13 +434,12 @@ def main():
                     attached = True
                     break
 
-        # If still not attached, start a new conversation
+# If still not attached, start a new conversation
         if not attached:
             conv = ActiveConversation(rec)
             active.append(conv)
 
-        # Track message in LRU for potential thread linking
-        # Also remember which conv index this message belongs to for fast thread attach
+# Track message in LRU for potential thread linking
         try:
             conv_idx = (
                 len(active) - 1
@@ -472,24 +453,24 @@ def main():
                     None,
                 )
             )
-            # augment record proxy with conversation index (only stored in map, not persisted)
+# augment record proxy with conversation index (only stored in map, not persisted)
             rec_proxy = type("MsgProxy", (), {})()
             rec_proxy.id = rec["id"]
             rec_proxy._conv_idx = conv_idx
             msg_map.set(rec["id"], rec_proxy)
         except Exception:
-            # if anything odd, still keep id in map without index
+# if anything odd, still keep id in map without index
             rec_proxy = type("MsgProxy", (), {})()
             rec_proxy.id = rec["id"]
             msg_map.set(rec["id"], rec_proxy)
 
-        # Flush expired conversations to disk to keep memory bounded
+# Flush expired conversations to disk to keep memory bounded
         now_dt = parse_dt(rec["date"])
         while active and active[0].is_expired(now_dt, SESSION_WINDOW_SECONDS):
             save_conversation_stream(conv_out, active.popleft())
             total_convs += 1
 
-        # Bound number of active conversations
+# Bound number of active conversations
         while len(active) > MAX_ACTIVE_CONVERSATIONS:
             save_conversation_stream(conv_out, active.popleft())
             total_convs += 1
@@ -499,7 +480,7 @@ def main():
                 f"Processed {total_msgs:,} msgs | active_convs={len(active)} | total_convs_flushed={total_convs:,}"
             )
 
-    # Flush remaining conversations
+# Flush remaining conversations
     while active:
         save_conversation_stream(conv_out, active.popleft())
         total_convs += 1
@@ -515,8 +496,7 @@ def main():
     )
     logging.info(f"User map saved: {OUT_USER_MAP_FILE}")
 
-    # OPTIONAL: Convert JSONL-of-arrays -> single pretty JSON list file expected by downstream
-    # This keeps memory low by streaming the rewrite.
+# OPTIONAL: Convert JSONL-of-arrays -> single pretty JSON list file expected by downstream
     logging.info(
         f"Rewriting conversations JSONL -> pretty JSON array at {OUT_CONV_FILE}"
     )

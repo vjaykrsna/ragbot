@@ -42,12 +42,7 @@ class RAGPipeline:
             )
             raise
 
-        # Initialize litellm client via central config helper. This will set
-        # api_base to the proxy when configured and otherwise use a single
-        # fallback API key (from env) as a last resort. Keep initialization
-        # centralized in `src.utils.config.initialize_litellm_client_stub` so
-        # we don't accidentally override proxy-side rotation or other global
-        # behavior.
+# Initialize litellm client via central config helper.
         try:
             from src.utils import config as _cfg
 
@@ -89,7 +84,7 @@ class RAGPipeline:
         if not nuggets:
             return []
 
-        # Filter outdated
+# Filter outdated
         filtered = [n for n in nuggets if n.get("status") != "OUTDATED"]
 
         now = datetime.now(timezone.utc)

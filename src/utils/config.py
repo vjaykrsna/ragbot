@@ -1,9 +1,4 @@
-# ==============================================================================
-# CENTRALIZED CONFIGURATION
-# ==============================================================================
-# This file contains all the configuration constants for the RAG Telegram Bot.
-# By centralizing them here, we can ensure consistency and ease of maintenance.
-# ==============================================================================
+# =============== CENTRALIZED CONFIGURATION ================
 
 import os
 from typing import List
@@ -34,20 +29,17 @@ TELEGRAM_PASSWORD: str | None = os.getenv("TELEGRAM_PASSWORD")
 # --- LiteLLM Proxy Configuration ---
 LITELLM_PROXY_URL: str | None = os.getenv("LITELLM_PROXY_URL")
 # Toggle whether to enable small on-disk local caches for completions/embeddings.
-# Default disabled for production; rely on LiteLLM proxy + Redis cache instead.
 USE_LOCAL_FILE_CACHE: bool = os.getenv("USE_LOCAL_FILE_CACHE", "false").lower() in (
     "1",
     "true",
     "yes",
 )
 
-# Optional: a fallback API key to use when no proxy is configured. Keep empty
-# to avoid embedding secrets in code; prefer using the proxy for rotation.
+# Optional: a fallback API key to use when no proxy is configured.
 FALLBACK_LITELLM_API_KEY: str | None = os.getenv("LITELLM_API_KEY")
 
 
-# --- Model Configuration ---
-# These model names are defined in the litellm_config.yaml file.
+# --- Model Configuration --- These model names are defined in the litellm_config.
 SYNTHESIS_MODEL_NAME = "gemini-synthesis-model"
 EMBEDDING_MODEL_NAME = "gemini-embedding-model"
 SYNTHESIS_MODEL_PROXY = f"litellm_proxy/{SYNTHESIS_MODEL_NAME}"
@@ -82,8 +74,7 @@ REQUESTS_PER_MINUTE = int(os.getenv("REQUESTS_PER_MINUTE", "90"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "2"))
 
 
-# --- RAG Pipeline Configuration ---
-# Weights for re-ranking (should sum to 1.0)
+# --- RAG Pipeline Configuration --- Weights for re-ranking (should sum to 1.0)
 SEMANTIC_SCORE_WEIGHT = float(os.getenv("SEMANTIC_SCORE_WEIGHT", "0.5"))
 RECENCY_SCORE_WEIGHT = float(os.getenv("RECENCY_SCORE_WEIGHT", "0.3"))
 STATUS_SCORE_WEIGHT = float(os.getenv("STATUS_SCORE_WEIGHT", "0.2"))
@@ -113,7 +104,7 @@ def initialize_litellm_client_stub():
     Projects that need advanced rotation should implement a dedicated client
     wrapper.
     """
-    # Delayed import to avoid import cycles
+# Delayed import to avoid import cycles
     try:
         import logging
         import os as _os
@@ -137,5 +128,5 @@ def initialize_litellm_client_stub():
                     "No LITELLM_PROXY_URL or LITELLM_API_KEY configured; litellm calls may fail at runtime"
                 )
     except Exception:
-        # best-effort only; caller modules should handle missing config at runtime
+# best-effort only; caller modules should handle missing config at runtime
         pass
