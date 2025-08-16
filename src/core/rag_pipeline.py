@@ -12,6 +12,17 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+class LiteLLMEmbeddingFunction:
+    """Wrapper for litellm.embed to conform to ChromaDB's interface."""
+    def __init__(self, model_name="gemini-embedding-model"):
+        self._model_name = model_name
+
+    def __call__(self, input: List[str]) -> List[List[float]]:
+        return litellm_client.embed(input)
+
+    def name(self) -> str:
+        return self._model_name
+
 class RAGPipeline:
     """Retrieval-Augmented Generation pipeline.
 
@@ -26,8 +37,10 @@ class RAGPipeline:
             self.db_client: chromadb.Client = chromadb.PersistentClient(
                 path=config.DB_PATH
             )
+            embedding_function = LiteLLMEmbeddingFunction()
             self.collection: Collection = self.db_client.get_or_create_collection(
-                name=config.COLLECTION_NAME
+                name=config.COLLECTION_NAME,
+                embedding_function=embedding_function
             )
             logger.info(
                 "Connected to ChromaDB collection '%s' with %d items.",
