@@ -25,9 +25,7 @@ class Anonymizer:
         Args:
             settings: The path settings for the application.
         """
-        self.user_map_file = os.path.join(
-            settings.processed_data_dir, settings.user_map_file
-        )
+        self.user_map_file = settings.user_map_file
         self.user_map, self.next_user_num = self._load_user_map()
         self.logger = logging.getLogger(__name__)
 
