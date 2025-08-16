@@ -2,7 +2,6 @@ import logging
 import logging.handlers
 import os
 import sys
-from typing import NoReturn
 
 LOG_DIR = "logs"
 MAX_LOG_SIZE_MB = 5

@@ -1,26 +1,31 @@
-import os
-import json
-import re
-import logging
-from dotenv import load_dotenv
-import telethon
 import asyncio
+import json
+import logging
+import os
+import re
+from datetime import datetime
+
+import telethon
+from dotenv import load_dotenv
 from telethon.errors import FloodWaitError
 from telethon.sync import TelegramClient
-from telethon.tl.types import PeerChannel
-from datetime import datetime
 from telethon.tl.functions.channels import GetForumTopicsRequest
 from tqdm.asyncio import tqdm_asyncio
+
+from src.utils import config
+from src.utils.logger import setup_logging
 
 # Load environment variables
 load_dotenv()
 api_id_env = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
 if not api_id_env or not api_hash:
-    raise RuntimeError("API_ID and API_HASH must be set in the environment to run extraction.")
+    raise RuntimeError(
+        "API_ID and API_HASH must be set in the environment to run extraction."
+    )
 api_id = int(api_id_env)
 
-from src.utils import config
+setup_logging()
 
 # Use project root to store session files so they are persistent across runs
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -60,10 +65,21 @@ def save_message_jsonl(chat_title, topic_id, messages):
     """Saves messages to a .jsonl file with a unique name."""
     safe_title = safe_filename(chat_title)
     # Include topic_id to prevent filename collisions for topics processed in the same second
-    filename = f"{safe_title}_{topic_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+    filename = (
+        f"{safe_title}_{topic_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+    )
     filepath = os.path.join(config.RAW_DATA_DIR, filename)
+    # Attach source-level metadata to each message before saving so downstream
+    # processors can use it for provenance and freshness filtering.
+    ingestion_ts = datetime.utcnow().isoformat()
     with open(filepath, "w", encoding="utf-8") as f:
         for msg in messages:
+            # Preserve original fields but add source metadata used later
+            msg.setdefault("source_name", chat_title)
+            msg.setdefault("source_group_id", msg.get("group_id") or None)
+            msg.setdefault("source_topic_id", topic_id)
+            msg.setdefault("source_saved_file", os.path.basename(filepath))
+            msg.setdefault("ingestion_timestamp", ingestion_ts)
             json.dump(msg, f, ensure_ascii=False, cls=TelegramObjectEncoder)
             f.write("\n")
     logging.info(f"✅ Saved {len(messages)} messages to {filepath}")
@@ -100,9 +116,13 @@ def get_message_details(msg):
         extra_data["options"] = []
         if msg.media.results and msg.media.results.results:
             for answer, result in zip(poll.answers, msg.media.results.results):
-                extra_data["options"].append({"text": answer.text, "voters": result.voters})
+                extra_data["options"].append(
+                    {"text": answer.text, "voters": result.voters}
+                )
         else:
-            extra_data["options"] = [{"text": answer.text, "voters": 0} for answer in poll.answers]
+            extra_data["options"] = [
+                {"text": answer.text, "voters": 0} for answer in poll.answers
+            ]
         return "poll", content, extra_data
 
     # --- Unified Link Detection ---
@@ -116,14 +136,17 @@ def get_message_details(msg):
                 offset, length = entity.offset, entity.length
                 urls.add(msg.text[offset : offset + length])
     # 2. From WebPage media
-    if isinstance(msg.media, telethon.tl.types.MessageMediaWebPage) and msg.media.webpage.url:
+    if (
+        isinstance(msg.media, telethon.tl.types.MessageMediaWebPage)
+        and msg.media.webpage.url
+    ):
         urls.add(msg.media.webpage.url)
     # 3. Fallback to regex
     if msg.text:
         urls.update(re.findall(url_regex, msg.text))
 
     if urls:
-        content = msg.text if msg.text else next(iter(urls)) # Use first URL if no text
+        content = msg.text if msg.text else next(iter(urls))  # Use first URL if no text
         extra_data["urls"] = list(urls)
         return "link", content, extra_data
 
@@ -195,21 +218,35 @@ async def extract_from_group_id(group_id, last_msg_ids):
         logging.info(f"\nProcessing Group: {entity.title} (ID: {group_id})")
         if entity.forum:
             try:
-                topics_result = await client(GetForumTopicsRequest(channel=entity, offset_date=datetime.now(), offset_id=0, offset_topic=0, limit=100))
+                topics_result = await client(
+                    GetForumTopicsRequest(
+                        channel=entity,
+                        offset_date=datetime.now(),
+                        offset_id=0,
+                        offset_topic=0,
+                        limit=100,
+                    )
+                )
                 if topics_result and hasattr(topics_result, "topics"):
-                    logging.info(f"Found {len(topics_result.topics)} topics. Iterating through them.")
+                    logging.info(
+                        f"Found {len(topics_result.topics)} topics. Iterating through them."
+                    )
                     for topic in topics_result.topics:
                         await extract_from_topic(entity, topic, last_msg_ids)
                 else:
                     logging.info("  - Forum group with no topics found. Skipping.")
             except Exception:
-                logging.exception(f"  - ❌ Error fetching topics for forum '{entity.title}'")
+                logging.exception(
+                    f"  - ❌ Error fetching topics for forum '{entity.title}'"
+                )
         else:
             logging.info("  - This is a regular group. Extracting from main chat.")
             general_topic = type("obj", (object,), {"id": 0, "title": "General"})()
             await extract_from_topic(entity, general_topic, last_msg_ids)
     except FloodWaitError as fwe:
-        logging.warning(f"Flood wait error for group {group_id}. Waiting for {fwe.seconds} seconds.")
+        logging.warning(
+            f"Flood wait error for group {group_id}. Waiting for {fwe.seconds} seconds."
+        )
         await asyncio.sleep(fwe.seconds)
         await extract_from_group_id(group_id, last_msg_ids)  # Retry
     except Exception:

@@ -1,12 +1,16 @@
-import chromadb
 import argparse
-import json
+from typing import Any, Dict
+
+import chromadb
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
+
 from src.utils import config
-from typing import List, Dict, Any
+from src.utils.logger import setup_logging
+
+setup_logging()
 
 console = Console()
 
@@ -65,7 +69,7 @@ def inspect_database(limit: int):
             collection = client.get_collection(name=config.COLLECTION_NAME)
             count = collection.count()
 
-            summary_text = Text(f"Total items in collection: ", style="default")
+            summary_text = Text("Total items in collection: ", style="default")
             summary_text.append(str(count), style="bold green")
             console.print(summary_text)
 
@@ -85,7 +89,9 @@ def inspect_database(limit: int):
             )
 
     except Exception as e:
-        console.print(f"An error occurred during database inspection: {e}", style="bold red")
+        console.print(
+            f"An error occurred during database inspection: {e}", style="bold red"
+        )
 
 
 def delete_collection(collection_name: str):
@@ -94,10 +100,15 @@ def delete_collection(collection_name: str):
         console.print(f"Connecting to database at path: [cyan]{config.DB_PATH}[/]")
         client = chromadb.PersistentClient(path=config.DB_PATH)
 
-        console.print(f"--- Deleting Collection: '{collection_name}' ---", style="bold yellow")
+        console.print(
+            f"--- Deleting Collection: '{collection_name}' ---", style="bold yellow"
+        )
         try:
             client.delete_collection(name=collection_name)
-            console.print(f"Collection '{collection_name}' deleted successfully.", style="bold green")
+            console.print(
+                f"Collection '{collection_name}' deleted successfully.",
+                style="bold green",
+            )
         except Exception:
             console.print(
                 f"Could not delete collection '{collection_name}'. It might not exist.",
@@ -105,11 +116,15 @@ def delete_collection(collection_name: str):
             )
 
     except Exception as e:
-        console.print(f"An error occurred during database management: {e}", style="bold red")
+        console.print(
+            f"An error occurred during database management: {e}", style="bold red"
+        )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Inspect or manage the ChromaDB database.")
+    parser = argparse.ArgumentParser(
+        description="Inspect or manage the ChromaDB database."
+    )
     parser.add_argument(
         "--delete",
         type=str,

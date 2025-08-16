@@ -51,6 +51,11 @@ Each object in your output array **MUST** be a valid JSON object matching this s
 -   `keywords`: Extract 3-5 key technical terms or entities from the conversation.
 -   `source_message_ids`: Create an array of all `id`s from the input conversation.
 -   `user_ids_involved`: Create an array of all unique, anonymized `sender_id`s from the input conversation.
+-   `normalized_values` (optional but recommended): An array of numeric/date facts detected in the conversation. Each item should be an object with fields `{ "span": "original text span", "value": number|null, "unit": "string", "confidence": "Low|Medium|High" }`.
+  - The LLM should populate normalized_values for any numeric claims it includes in `detailed_analysis`.
+  - If no numeric facts are present, return an empty array `[]`.
+
+-   `ingestion_timestamp` (optional): ISO 8601 timestamp when the nugget is synthesized. If omitted, the system will stamp the nugget upon ingestion.
 
 ---
 

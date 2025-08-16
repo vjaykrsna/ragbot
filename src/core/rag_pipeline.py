@@ -1,13 +1,12 @@
-import os
-import chromadb
-import litellm
 import logging
-from src.utils import config
-from typing import Any, Dict, List
-from chromadb.api.models.Collection import Collection
-from src.utils.logger import setup_logging
 from datetime import datetime, timezone
+from typing import Any, Dict, List
 
+import chromadb
+from chromadb.api.models.Collection import Collection
+
+from src.utils import config, litellm_client
+from src.utils.logger import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -43,37 +42,33 @@ class RAGPipeline:
             )
             raise
 
-        # Configure litellm client
-        if config.LITELLM_PROXY_URL:
-            litellm.api_base = config.LITELLM_PROXY_URL
-        else:
-            logger.warning("LITELLM_PROXY_URL not configured; litellm may fail at runtime.")
-
-        # Do not hardcode API keys in source. The proxy should handle auth.
-        litellm.api_key = os.getenv("LITELLM_API_KEY", "")
-        # Ensure verbose flag is set via attribute if supported
+        # Initialize litellm client via central config helper. This will set
+        # api_base to the proxy when configured and otherwise use a single
+        # fallback API key (from env) as a last resort. Keep initialization
+        # centralized in `src.utils.config.initialize_litellm_client_stub` so
+        # we don't accidentally override proxy-side rotation or other global
+        # behavior.
         try:
-            litellm.set_verbose(False)
+            from src.utils import config as _cfg
+
+            _cfg.initialize_litellm_client_stub()
         except Exception:
-            # older/newer clients may differ; ignore non-critical failures
-            pass
+            logger.exception("Failed to initialize litellm client via config helper")
 
     def embed_query(self, query_text: str) -> List[float]:
         """Generate embedding for the query. Returns vector as list[float]."""
         try:
-            response = litellm.embedding(
-                model=config.EMBEDDING_MODEL_PROXY,
-                input=[query_text],
-                cache=True,
-            )
-            if getattr(response, "cache_hit", False):
-                logger.info("Embedding cache hit")
-            return response["data"][0]["embedding"]
+            emb = litellm_client.embed([query_text])
+            if emb is None or not emb:
+                raise Exception("Embedding failed")
+            return emb[0]
         except Exception:
             logger.exception("Failed to generate embedding for query: %s", query_text)
             raise
 
-    def retrieve_context(self, query_embedding: List[float], n_results: int = 5) -> List[Dict[str, Any]]:
+    def retrieve_context(
+        self, query_embedding: List[float], n_results: int = 5
+    ) -> List[Dict[str, Any]]:
         """Retrieve top-n candidate nuggets from the vector DB and re-rank them."""
         try:
             results = self.collection.query(
@@ -88,7 +83,9 @@ class RAGPipeline:
             logger.exception("Failed to retrieve context from ChromaDB")
             return []
 
-    def rerank_and_filter_nuggets(self, nuggets: List[Dict[str, Any]], distances: List[float]) -> List[Dict[str, Any]]:
+    def rerank_and_filter_nuggets(
+        self, nuggets: List[Dict[str, Any]], distances: List[float]
+    ) -> List[Dict[str, Any]]:
         if not nuggets:
             return []
 
@@ -115,7 +112,9 @@ class RAGPipeline:
                 except Exception:
                     pass
 
-            status_score = config.STATUS_WEIGHTS.get(nugget.get("status"), config.STATUS_WEIGHTS["DEFAULT"])
+            status_score = config.STATUS_WEIGHTS.get(
+                nugget.get("status"), config.STATUS_WEIGHTS["DEFAULT"]
+            )
             semantic_score = 1.0 - distances[i] if i < len(distances) else 0.0
 
             final = (
@@ -128,11 +127,15 @@ class RAGPipeline:
         scored.sort(key=lambda x: x[1], reverse=True)
         return [n for n, _ in scored]
 
-    def generate_response(self, query: str, context_nuggets: List[Dict[str, Any]]) -> str:
+    def generate_response(
+        self, query: str, context_nuggets: List[Dict[str, Any]]
+    ) -> str:
         if not context_nuggets:
             return "I couldn't find any relevant information in the knowledge base to answer your question."
 
-        context_str = "\n\n---\n\n".join(n.get("full_text", "") for n in context_nuggets)
+        context_str = "\n\n---\n\n".join(
+            n.get("full_text", "") for n in context_nuggets
+        )
         system_prompt = (
             "You are an AI assistant answering questions based on a provided knowledge base of Telegram chat excerpts.\n"
             "Base your answer strictly on the provided excerpts. If information is missing, say so.\n\n"
@@ -140,14 +143,15 @@ class RAGPipeline:
         )
 
         try:
-            response = litellm.completion(
-                model=config.SYNTHESIS_MODEL_PROXY,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
-                cache=True,
+            resp = litellm_client.complete(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query},
+                ]
             )
-            if getattr(response, "cache_hit", False):
-                logger.info("Completion cache hit")
-            return response.choices[0].message.content
+            if not resp or not getattr(resp, "choices", None):
+                raise Exception("LLM completion returned empty")
+            return resp.choices[0].message.content
         except Exception:
             logger.exception("Failed to generate response from LLM")
             return "I encountered an error while trying to generate a response."
@@ -157,7 +161,11 @@ class RAGPipeline:
         logger.info("Received query: %s", user_query)
 
         query_embedding = self.embed_query(user_query)
-        retrieved = self.collection.query(query_embeddings=[query_embedding], n_results=10, include=["metadatas", "distances"])
+        retrieved = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=10,
+            include=["metadatas", "distances"],
+        )
         nuggets = retrieved.get("metadatas", [[]])[0]
         distances = retrieved.get("distances", [[]])[0]
 
