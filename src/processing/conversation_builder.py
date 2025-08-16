@@ -13,7 +13,7 @@ from typing import Any, Dict, Generator, List
 
 from dateutil.parser import isoparse
 
-from src.core.settings import ConversationSettings
+from src.config.conversation import ConversationSettings
 
 
 class LRUMessageMap(OrderedDict):
