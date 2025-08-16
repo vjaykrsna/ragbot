@@ -1,0 +1,174 @@
+import os
+import chromadb
+import litellm
+import logging
+from src.utils import config
+from typing import Any, Dict, List
+from chromadb.api.models.Collection import Collection
+from src.utils.logger import setup_logging
+from datetime import datetime, timezone
+
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+
+class RAGPipeline:
+    """Retrieval-Augmented Generation pipeline.
+
+    Responsible for querying the vector DB and asking the LLM for final
+    responses. Designed to be used from sync code; the heavy LLM calls
+    are blocking and should be executed in an executor when called from
+    an async context.
+    """
+
+    def __init__(self) -> None:
+        try:
+            self.db_client: chromadb.Client = chromadb.PersistentClient(
+                path=config.DB_PATH
+            )
+            self.collection: Collection = self.db_client.get_or_create_collection(
+                name=config.COLLECTION_NAME
+            )
+            logger.info(
+                "Connected to ChromaDB collection '%s' with %d items.",
+                config.COLLECTION_NAME,
+                self.collection.count(),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to connect to ChromaDB at path '%s' and collection '%s'.",
+                config.DB_PATH,
+                config.COLLECTION_NAME,
+            )
+            raise
+
+        # Configure litellm client
+        if config.LITELLM_PROXY_URL:
+            litellm.api_base = config.LITELLM_PROXY_URL
+        else:
+            logger.warning("LITELLM_PROXY_URL not configured; litellm may fail at runtime.")
+
+        # Do not hardcode API keys in source. The proxy should handle auth.
+        litellm.api_key = os.getenv("LITELLM_API_KEY", "")
+        # Ensure verbose flag is set via attribute if supported
+        try:
+            litellm.set_verbose(False)
+        except Exception:
+            # older/newer clients may differ; ignore non-critical failures
+            pass
+
+    def embed_query(self, query_text: str) -> List[float]:
+        """Generate embedding for the query. Returns vector as list[float]."""
+        try:
+            response = litellm.embedding(
+                model=config.EMBEDDING_MODEL_PROXY,
+                input=[query_text],
+                cache=True,
+            )
+            if getattr(response, "cache_hit", False):
+                logger.info("Embedding cache hit")
+            return response["data"][0]["embedding"]
+        except Exception:
+            logger.exception("Failed to generate embedding for query: %s", query_text)
+            raise
+
+    def retrieve_context(self, query_embedding: List[float], n_results: int = 5) -> List[Dict[str, Any]]:
+        """Retrieve top-n candidate nuggets from the vector DB and re-rank them."""
+        try:
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results,
+                include=["metadatas", "distances"],
+            )
+            nuggets = results.get("metadatas", [[]])[0]
+            distances = results.get("distances", [[]])[0]
+            return self.rerank_and_filter_nuggets(nuggets, distances)
+        except Exception:
+            logger.exception("Failed to retrieve context from ChromaDB")
+            return []
+
+    def rerank_and_filter_nuggets(self, nuggets: List[Dict[str, Any]], distances: List[float]) -> List[Dict[str, Any]]:
+        if not nuggets:
+            return []
+
+        # Filter outdated
+        filtered = [n for n in nuggets if n.get("status") != "OUTDATED"]
+
+        now = datetime.now(timezone.utc)
+        scored = []
+        for i, nugget in enumerate(filtered):
+            recency_score = 0.0
+            ts = nugget.get("last_message_timestamp")
+            if ts:
+                try:
+                    last_ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    days = (now - last_ts).days
+                    if days < 1:
+                        recency_score = 1.0
+                    elif days < 7:
+                        recency_score = 0.8
+                    elif days < 30:
+                        recency_score = 0.5
+                    else:
+                        recency_score = 0.2
+                except Exception:
+                    pass
+
+            status_score = config.STATUS_WEIGHTS.get(nugget.get("status"), config.STATUS_WEIGHTS["DEFAULT"])
+            semantic_score = 1.0 - distances[i] if i < len(distances) else 0.0
+
+            final = (
+                semantic_score * config.SEMANTIC_SCORE_WEIGHT
+                + recency_score * config.RECENCY_SCORE_WEIGHT
+                + status_score * config.STATUS_SCORE_WEIGHT
+            )
+            scored.append((nugget, final))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [n for n, _ in scored]
+
+    def generate_response(self, query: str, context_nuggets: List[Dict[str, Any]]) -> str:
+        if not context_nuggets:
+            return "I couldn't find any relevant information in the knowledge base to answer your question."
+
+        context_str = "\n\n---\n\n".join(n.get("full_text", "") for n in context_nuggets)
+        system_prompt = (
+            "You are an AI assistant answering questions based on a provided knowledge base of Telegram chat excerpts.\n"
+            "Base your answer strictly on the provided excerpts. If information is missing, say so.\n\n"
+            f"Here are the relevant excerpts:\n---\n{context_str}\n---\n"
+        )
+
+        try:
+            response = litellm.completion(
+                model=config.SYNTHESIS_MODEL_PROXY,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": query}],
+                cache=True,
+            )
+            if getattr(response, "cache_hit", False):
+                logger.info("Completion cache hit")
+            return response.choices[0].message.content
+        except Exception:
+            logger.exception("Failed to generate response from LLM")
+            return "I encountered an error while trying to generate a response."
+
+    def query(self, user_query: str) -> str:
+        """Run the full pipeline: embed -> retrieve -> generate."""
+        logger.info("Received query: %s", user_query)
+
+        query_embedding = self.embed_query(user_query)
+        retrieved = self.collection.query(query_embeddings=[query_embedding], n_results=10, include=["metadatas", "distances"])
+        nuggets = retrieved.get("metadatas", [[]])[0]
+        distances = retrieved.get("distances", [[]])[0]
+
+        reranked = self.rerank_and_filter_nuggets(nuggets, distances)
+        final = self.generate_response(user_query, reranked[:5])
+
+        logger.info("Generated response")
+        return final
+
+
+if __name__ == "__main__":
+    rp = RAGPipeline()
+    q = "What was the discussion about regarding the project architecture?"
+    print(rp.query(q))
