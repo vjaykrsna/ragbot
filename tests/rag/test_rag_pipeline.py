@@ -9,9 +9,7 @@ from src.rag.rag_pipeline import RAGPipeline
 class TestRAGPipeline(unittest.TestCase):
     def setUp(self):
         # Create a dummy AppSettings object for the test
-        self.settings = AppSettings(
-            telegram=TelegramSettings(bot_token="fake_token")
-        )
+        self.settings = AppSettings(telegram=TelegramSettings(bot_token="fake_token"))
 
         # Mock the dependencies
         self.mock_chroma_client = MagicMock()
