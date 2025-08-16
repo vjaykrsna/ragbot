@@ -27,7 +27,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def _run_query_in_executor(rag_pipeline: RAGPipeline, text: str) -> str:
     loop = asyncio.get_running_loop()
-# Use a threadpool for blocking I/O / CPU-bound library calls
+    # Use a threadpool for blocking I/O / CPU-bound library calls
     with ThreadPoolExecutor(max_workers=1) as ex:
         return await loop.run_in_executor(ex, lambda: rag_pipeline.query(text))
 
@@ -48,7 +48,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_message = update.message.text or ""
     logger.info("Received message: %s", user_message)
 
-# Send "typing..." action
+    # Send "typing..." action
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id, action="typing"
     )

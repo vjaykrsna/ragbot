@@ -6,19 +6,19 @@ conversations based on time, topic, and reply-to links.
 """
 
 import hashlib
-import json
 import logging
 from collections import OrderedDict, deque
 from datetime import datetime
-from typing import Generator, Dict, Any, List, Optional
+from typing import Any, Dict, Generator, List
 
 from dateutil.parser import isoparse
 
-from src.core.settings import ConversationSettings, PathSettings
+from src.core.settings import ConversationSettings
 
 
 class LRUMessageMap(OrderedDict):
     """A simple LRU map to keep track of recent messages for reply linking."""
+
     def __init__(self, maxlen: int):
         super().__init__()
         self.maxlen = maxlen
@@ -39,6 +39,7 @@ class LRUMessageMap(OrderedDict):
 
 class ActiveConversation:
     """Represents a single, ongoing conversation."""
+
     __slots__ = ("messages", "id_set", "start", "last", "topic_id", "topic_title")
 
     def __init__(self, first_msg: Dict[str, Any]):
@@ -49,7 +50,9 @@ class ActiveConversation:
         self.topic_id = first_msg.get("topic_id")
         self.topic_title = first_msg.get("topic_title")
 
-    def try_attach(self, msg: Dict[str, Any], time_threshold: int, session_window: int) -> bool:
+    def try_attach(
+        self, msg: Dict[str, Any], time_threshold: int, session_window: int
+    ) -> bool:
         """Tries to attach a message to this conversation based on time and topic."""
         msg_dt = isoparse(msg["date"])
         within_gap = (msg_dt - self.last).total_seconds() < time_threshold
@@ -81,14 +84,21 @@ class ConversationBuilder:
     Groups a stream of sorted, anonymized messages into conversations.
     """
 
-    def __init__(self, conv_settings: ConversationSettings, max_active: int = 10_000, max_msg_map: int = 200_000):
+    def __init__(
+        self,
+        conv_settings: ConversationSettings,
+        max_active: int = 10_000,
+        max_msg_map: int = 200_000,
+    ):
         self.settings = conv_settings
         self.max_active_conversations = max_active
         self.msg_map = LRUMessageMap(max_msg_map)
         self.active: deque[ActiveConversation] = deque()
         self.logger = logging.getLogger(__name__)
 
-    def process_stream(self, message_stream: Generator[Dict[str, Any], None, None]) -> Generator[Dict[str, Any], None, None]:
+    def process_stream(
+        self, message_stream: Generator[Dict[str, Any], None, None]
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Processes a stream of messages and yields completed conversation envelopes.
         """
@@ -98,7 +108,9 @@ class ConversationBuilder:
             now_dt = isoparse(rec["date"])
 
             # First, flush any conversations that have expired relative to the current message
-            while self.active and self.active[0].is_expired(now_dt, self.settings.session_window_seconds):
+            while self.active and self.active[0].is_expired(
+                now_dt, self.settings.session_window_seconds
+            ):
                 yield self._create_envelope(self.active.popleft())
 
             self._assign_to_conversation(rec)
@@ -133,7 +145,11 @@ class ConversationBuilder:
         # 2. Try to attach by time/topic to recent conversations
         for i in range(min(len(self.active), 200)):
             conv = self.active[-1 - i]
-            if conv.try_attach(rec, self.settings.time_threshold_seconds, self.settings.session_window_seconds):
+            if conv.try_attach(
+                rec,
+                self.settings.time_threshold_seconds,
+                self.settings.session_window_seconds,
+            ):
                 self._update_message_map(rec)
                 return
 
@@ -169,8 +185,16 @@ class ConversationBuilder:
         joined = "\n".join(conv_texts)
         ingestion_hash = hashlib.md5(joined.encode("utf-8")).hexdigest()
 
-        source_files = list({m.get("source_saved_file") for m in conv.messages if m.get("source_saved_file")})
-        source_names = list({m.get("source_name") for m in conv.messages if m.get("source_name")})
+        source_files = list(
+            {
+                m.get("source_saved_file")
+                for m in conv.messages
+                if m.get("source_saved_file")
+            }
+        )
+        source_names = list(
+            {m.get("source_name") for m in conv.messages if m.get("source_name")}
+        )
 
         return {
             "ingestion_timestamp": datetime.utcnow().isoformat(),

@@ -65,16 +65,16 @@ class TelegramObjectEncoder(json.JSONEncoder):
 def save_message_jsonl(chat_title, topic_id, messages):
     """Saves messages to a .jsonl file with a unique name."""
     safe_title = safe_filename(chat_title)
-# Include topic_id to prevent filename collisions for topics
+    # Include topic_id to prevent filename collisions for topics
     filename = (
         f"{safe_title}_{topic_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
     )
-    filepath = os.path.join(config.RAW_DATA_DIR, filename)
-# Attach source-level metadata to each message before saving so downstream
+    filepath = os.path.join(settings.paths.raw_data_dir, filename)
+    # Attach source-level metadata to each message before saving so downstream
     ingestion_ts = datetime.utcnow().isoformat()
     with open(filepath, "w", encoding="utf-8") as f:
         for msg in messages:
-# Preserve original fields but add source metadata used later
+            # Preserve original fields but add source metadata used later
             msg.setdefault("source_name", chat_title)
             msg.setdefault("source_group_id", msg.get("group_id") or None)
             msg.setdefault("source_topic_id", topic_id)
@@ -87,8 +87,8 @@ def save_message_jsonl(chat_title, topic_id, messages):
 
 def load_last_msg_ids():
     """Loads the last processed message ID for each topic from a file."""
-    if os.path.exists(config.TRACKING_FILE):
-        with open(config.TRACKING_FILE, "r") as f:
+    if os.path.exists(settings.paths.tracking_file):
+        with open(settings.paths.tracking_file, "r") as f:
             try:
                 return json.load(f)
             except json.JSONDecodeError:
@@ -98,7 +98,7 @@ def load_last_msg_ids():
 
 def save_last_msg_ids(data):
     """Saves the last processed message ID for each topic to a file."""
-    with open(config.TRACKING_FILE, "w") as f:
+    with open(settings.paths.tracking_file, "w") as f:
         json.dump(data, f, indent=2)
 
 
@@ -109,7 +109,7 @@ def get_message_details(msg):
     extra_data = {}
     url_regex = r"https?://[^\s]+"
 
-# --- Poll Detection ---
+    # --- Poll Detection ---
     if isinstance(msg.media, telethon.tl.types.MessageMediaPoll):
         poll = msg.media.poll
         content = poll.question
@@ -125,9 +125,9 @@ def get_message_details(msg):
             ]
         return "poll", content, extra_data
 
-# --- Unified Link Detection ---
+    # --- Unified Link Detection ---
     urls = set()
-# 1. From entities
+    # 1. From entities
     if msg.entities:
         for entity in msg.entities:
             if isinstance(entity, telethon.tl.types.MessageEntityTextUrl):
@@ -135,13 +135,13 @@ def get_message_details(msg):
             elif isinstance(entity, telethon.tl.types.MessageEntityUrl):
                 offset, length = entity.offset, entity.length
                 urls.add(msg.text[offset : offset + length])
-# 2. From WebPage media
+    # 2. From WebPage media
     if (
         isinstance(msg.media, telethon.tl.types.MessageMediaWebPage)
         and msg.media.webpage.url
     ):
         urls.add(msg.media.webpage.url)
-# 3. Fallback to regex
+    # 3. Fallback to regex
     if msg.text:
         urls.update(re.findall(url_regex, msg.text))
 
@@ -150,7 +150,7 @@ def get_message_details(msg):
         extra_data["urls"] = list(urls)
         return "link", content, extra_data
 
-# Default to text message if no other type is detected
+    # Default to text message if no other type is detected
     return "text", content, extra_data
 
 
@@ -256,18 +256,20 @@ async def extract_from_group_id(group_id, last_msg_ids):
 # MAIN ORCHESTRATION
 async def main():
     """Orchestrates the Telegram message extraction process."""
-    await client.start(phone=config.TELEGRAM_PHONE, password=config.TELEGRAM_PASSWORD)
+    await client.start(
+        phone=settings.telegram.phone, password=settings.telegram.password
+    )
 
     me = await client.get_me()
     logging.info(f"👤 Logged in as: {me.first_name} (@{me.username})")
 
-    if not config.GROUP_IDS:
+    if not settings.telegram.group_ids:
         logging.warning(
             "⚠️ No GROUP_IDS found in .env file. Please add the group/channel IDs to scrape."
         )
         return
 
-    group_ids = config.GROUP_IDS
+    group_ids = settings.telegram.group_ids
     last_msg_ids = load_last_msg_ids()
 
     for gid in group_ids:
@@ -280,5 +282,5 @@ async def main():
 
 
 if __name__ == "__main__":
-# Using asyncio.run() is the modern way to run an async main function.
+    # Using asyncio.run() is the modern way to run an async main function.
     asyncio.run(main())

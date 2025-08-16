@@ -18,7 +18,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import chromadb
 import chromadb.errors
@@ -146,7 +146,9 @@ class KnowledgeSynthesizer:
         """Loads the prompt template from the markdown file."""
         try:
             with open(self.settings.paths.prompt_file, "r", encoding="utf-8") as f:
-                logger.info(f"Loading prompt template from {self.settings.paths.prompt_file}")
+                logger.info(
+                    f"Loading prompt template from {self.settings.paths.prompt_file}"
+                )
                 return f.read()
         except FileNotFoundError as e:
             logger.error(f"Could not load prompt template: {e}")
@@ -191,7 +193,10 @@ class KnowledgeSynthesizer:
                         pbar.update(1)
                         continue
                     fut = executor.submit(
-                        self._process_conversation_batch, batch, prompt_template, collection
+                        self._process_conversation_batch,
+                        batch,
+                        prompt_template,
+                        collection,
                     )
                     future_to_batch_index[fut] = i
 
@@ -282,12 +287,16 @@ class KnowledgeSynthesizer:
                 )
                 if not response:
                     logger.warning(
-                        "LLM returned empty response, retrying (%d/%d)", attempt + 1, attempts
+                        "LLM returned empty response, retrying (%d/%d)",
+                        attempt + 1,
+                        attempts,
                     )
                     time.sleep(2**attempt)
                     continue
 
-                response_content = getattr(response.choices[0].message, "content", "") or ""
+                response_content = (
+                    getattr(response.choices[0].message, "content", "") or ""
+                )
                 json_match = re.search(r"\[.*\]", response_content, re.DOTALL)
                 if json_match:
                     break
@@ -300,10 +309,13 @@ class KnowledgeSynthesizer:
 
             if not response or not json_match:
                 logger.warning(
-                    "LLM failed to return a valid JSON array after %d attempts.", attempts
+                    "LLM failed to return a valid JSON array after %d attempts.",
+                    attempts,
                 )
                 self._save_failed_batch(
-                    conv_batch, "No JSON array in response after retries", response_content
+                    conv_batch,
+                    "No JSON array in response after retries",
+                    response_content,
                 )
                 return []
 
@@ -312,39 +324,58 @@ class KnowledgeSynthesizer:
                 response_data = json.loads(json_str)
                 if not isinstance(response_data, list):
                     logger.warning(f"LLM response is not a list. Response: {json_str}")
-                    self._save_failed_batch(conv_batch, "LLM response is not a list", json_str)
+                    self._save_failed_batch(
+                        conv_batch, "LLM response is not a list", json_str
+                    )
                     return []
 
                 validated_nuggets = []
                 for nugget in response_data:
                     required_keys = [
-                        "topic", "timestamp", "topic_summary", "detailed_analysis",
-                        "status", "keywords", "source_message_ids", "user_ids_involved",
+                        "topic",
+                        "timestamp",
+                        "topic_summary",
+                        "detailed_analysis",
+                        "status",
+                        "keywords",
+                        "source_message_ids",
+                        "user_ids_involved",
                     ]
                     if all(k in nugget for k in required_keys):
                         if "normalized_values" not in nugget:
                             nugget["normalized_values"] = []
                         if "ingestion_timestamp" not in nugget:
-                            nugget["ingestion_timestamp"] = datetime.now(timezone.utc).isoformat()
+                            nugget["ingestion_timestamp"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
                         validated_nuggets.append(nugget)
                     else:
                         logger.warning(f"Invalid nugget structure: {nugget}")
-                        self._save_failed_batch(conv_batch, "Invalid nugget structure", str(nugget))
+                        self._save_failed_batch(
+                            conv_batch, "Invalid nugget structure", str(nugget)
+                        )
                 return validated_nuggets
             except json.JSONDecodeError:
-                logger.warning("Failed to decode JSON from LLM response.", exc_info=True)
+                logger.warning(
+                    "Failed to decode JSON from LLM response.", exc_info=True
+                )
                 self._save_failed_batch(conv_batch, "JSONDecodeError", json_str)
                 return []
+
         return _decorated_generation()
 
-
     @retry_with_backoff
-    def _embed_nuggets_batch(self, nuggets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _embed_nuggets_batch(
+        self, nuggets: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         # This method also remains largely the same
         @self.limiter.as_decorator()(lambda: ("synthesis-worker", 1))
         def _decorated_embedding():
             valid_nuggets = [
-                n for n in nuggets if isinstance(n.get("detailed_analysis"), str) and n["detailed_analysis"].strip()
+                n
+                for n in nuggets
+                if isinstance(n.get("detailed_analysis"), str)
+                and n["detailed_analysis"].strip()
             ]
             if not valid_nuggets:
                 logger.warning("No valid documents to embed in the batch.")
@@ -373,7 +404,9 @@ class KnowledgeSynthesizer:
                 logger.error("Embedding response invalid after retries")
                 raise APIError("Embedding response is empty or invalid")
 
-            returned_embeddings = [item.get("embedding") for item in embedding_response.get("data", [])]
+            returned_embeddings = [
+                item.get("embedding") for item in embedding_response.get("data", [])
+            ]
             if len(returned_embeddings) != len(docs_to_embed):
                 logger.error(
                     "Mismatch between embeddings returned and docs requested: %d vs %d",
@@ -386,10 +419,13 @@ class KnowledgeSynthesizer:
                 valid_nuggets[i]["embedding"] = emb
                 nugget = valid_nuggets[i]
                 nugget.setdefault("meta", {})
-                nugget["meta"]["embedding_model"] = self.settings.litellm.embedding_model_proxy
+                nugget["meta"]["embedding_model"] = (
+                    self.settings.litellm.embedding_model_proxy
+                )
                 nugget["meta"]["embedding_created_at"] = datetime.utcnow().isoformat()
 
             return valid_nuggets
+
         return _decorated_embedding()
 
     def _store_nuggets_batch(
@@ -490,8 +526,12 @@ class KnowledgeSynthesizer:
         self, conv_batch: List[Dict[str, Any]], error: str, response_text: str = ""
     ) -> None:
         with fail_file_lock:
-            os.makedirs(os.path.dirname(self.settings.paths.failed_batches_file), exist_ok=True)
-            with open(self.settings.paths.failed_batches_file, "a", encoding="utf-8") as f:
+            os.makedirs(
+                os.path.dirname(self.settings.paths.failed_batches_file), exist_ok=True
+            )
+            with open(
+                self.settings.paths.failed_batches_file, "a", encoding="utf-8"
+            ) as f:
                 json.dump(
                     {
                         "timestamp": datetime.now().isoformat(),
@@ -516,7 +556,8 @@ class KnowledgeSynthesizer:
 
     def _load_processed_hashes(self) -> set:
         path = os.path.join(
-            self.settings.paths.processed_data_dir, self.settings.paths.processed_hashes_file
+            self.settings.paths.processed_data_dir,
+            self.settings.paths.processed_hashes_file,
         )
         if os.path.exists(path):
             try:
@@ -528,7 +569,8 @@ class KnowledgeSynthesizer:
 
     def _save_processed_hashes(self, hashes: set) -> None:
         path = os.path.join(
-            self.settings.paths.processed_data_dir, self.settings.paths.processed_hashes_file
+            self.settings.paths.processed_data_dir,
+            self.settings.paths.processed_hashes_file,
         )
         try:
             with open(path, "w", encoding="utf-8") as f:

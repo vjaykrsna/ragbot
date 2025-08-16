@@ -7,6 +7,7 @@ from src.processing.data_source import DataSource
 from src.processing.external_sorter import ExternalSorter
 from src.processing.pipeline import DataProcessingPipeline
 
+
 def create_container(settings: AppSettings) -> punq.Container:
     """
     Creates and configures the dependency injection container.
@@ -20,7 +21,9 @@ def create_container(settings: AppSettings) -> punq.Container:
     container.register(DataSource, factory=lambda: DataSource(settings.paths))
     container.register(ExternalSorter)
     container.register(Anonymizer, factory=lambda: Anonymizer(settings.paths))
-    container.register(ConversationBuilder, factory=lambda: ConversationBuilder(settings.conversation))
+    container.register(
+        ConversationBuilder, factory=lambda: ConversationBuilder(settings.conversation)
+    )
     container.register(DataProcessingPipeline)
 
     return container

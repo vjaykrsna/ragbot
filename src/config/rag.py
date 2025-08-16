@@ -1,8 +1,11 @@
 from typing import Dict
+
 from pydantic import BaseModel, Field
+
 
 class RAGSettings(BaseModel):
     """Settings for the RAG pipeline."""
+
     semantic_score_weight: float = Field(0.5, env="SEMANTIC_SCORE_WEIGHT")
     recency_score_weight: float = Field(0.3, env="RECENCY_SCORE_WEIGHT")
     status_score_weight: float = Field(0.2, env="STATUS_SCORE_WEIGHT")

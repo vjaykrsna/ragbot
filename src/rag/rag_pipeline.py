@@ -87,7 +87,7 @@ class RAGPipeline:
         if not nuggets:
             return []
 
-# Filter outdated
+        # Filter outdated
         filtered = [n for n in nuggets if n.get("status") != "OUTDATED"]
 
         now = datetime.now(timezone.utc)

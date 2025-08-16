@@ -1,8 +1,11 @@
 import os
+
 from pydantic import BaseModel
+
 
 class PathSettings(BaseModel):
     """Path and filename settings."""
+
     data_dir: str = "data"
     raw_data_dir: str = os.path.join("data", "raw")
     processed_data_dir: str = os.path.join("data", "processed")

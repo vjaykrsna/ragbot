@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import re
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from src.config.settings import AppSettings
 from src.processing.anonymizer import Anonymizer
@@ -73,7 +73,9 @@ class DataProcessingPipeline:
         )
         self.logger.info("✅ Data processing complete.")
 
-    def _process_record(self, rec: Dict[str, Any], anonymizer: Anonymizer) -> Dict[str, Any]:
+    def _process_record(
+        self, rec: Dict[str, Any], anonymizer: Anonymizer
+    ) -> Dict[str, Any]:
         """Processes a single record: anonymization and normalization."""
         # Anonymize sender ID
         sender_id = rec.get("sender_id")

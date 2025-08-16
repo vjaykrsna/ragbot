@@ -60,7 +60,7 @@ def main():
     num_keys = count_api_keys(cfg)
     logger.info("Found %d model entries with api_key in %s", num_keys, yaml_path)
 
-# Basic RPM recommendation: sum of per-key rpm if present else assume 5 rpm per key
+    # Basic RPM recommendation: sum of per-key rpm if present else assume 5 rpm per key
     total_rpm = 0
     if cfg:
         for entry in cfg.get("model_list", []):
@@ -69,13 +69,13 @@ def main():
             if isinstance(rpm, int):
                 total_rpm += rpm
             else:
-# fallback estimate
+                # fallback estimate
                 if lit.get("api_key"):
                     total_rpm += 5
 
     logger.info("Estimated total proxy RPM capacity from config: %d", total_rpm)
 
-# Check redis config in yaml (optional)
+    # Check redis config in yaml (optional)
     redis_cfg = None
     if cfg:
         rs = cfg.get("router_settings", {}).get("cache_kwargs")
@@ -83,10 +83,10 @@ def main():
             redis_cfg = rs
 
     if redis_cfg:
-# litellm_config.yaml may include placeholders like os.environ/REDIS_HOST
+        # litellm_config.yaml may include placeholders like os.environ/REDIS_HOST
         def resolve_val(v):
             if isinstance(v, str) and "os.environ/" in v:
-# extract env var name after slash
+                # extract env var name after slash
                 parts = v.split("/")
                 env = parts[-1]
                 return os.getenv(env)
