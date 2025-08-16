@@ -12,8 +12,11 @@ from telethon.sync import TelegramClient
 from telethon.tl.functions.channels import GetForumTopicsRequest
 from tqdm.asyncio import tqdm_asyncio
 
-from src.utils import config
-from src.utils.logger import setup_logging
+from src.core.app import initialize_app
+
+# Initialize the application context
+app_context = initialize_app()
+settings = app_context.settings
 
 # Load environment variables
 load_dotenv()
@@ -25,14 +28,12 @@ if not api_id_env or not api_hash:
     )
 api_id = int(api_id_env)
 
-setup_logging()
-
 # Use project root to store session files so they are persistent across runs
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-session_path = os.path.join(project_root, config.SESSION_NAME)
+session_path = os.path.join(project_root, settings.telegram.session_name)
 client = TelegramClient(session_path, api_id, api_hash)
 
-os.makedirs(config.RAW_DATA_DIR, exist_ok=True)
+os.makedirs(settings.paths.raw_data_dir, exist_ok=True)
 
 
 # HELPERS
