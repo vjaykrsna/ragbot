@@ -136,7 +136,8 @@ model_list:
       output_dimensionality: 768
 
 router_settings:
-  routing_strategy: "rate-limit-aware-v2"
+  # routing_strategy: "rate-limit-aware-v2"
+  routing_strategy: usage-based-routing-v2
   cache_responses: true
   cache_kwargs:
     type: "redis"
