@@ -155,6 +155,8 @@ def save_failed_batch(
 ) -> None:
     """Saves a failed conversation batch to a dead-letter queue file in a thread-safe manner."""
     with fail_file_lock:
+        failed_dir = os.path.dirname(config.FAILED_BATCHES_FILE) or config.DATA_DIR
+        os.makedirs(failed_dir, exist_ok=True)
         with open(config.FAILED_BATCHES_FILE, "a", encoding="utf-8") as f:
             json.dump(
                 {

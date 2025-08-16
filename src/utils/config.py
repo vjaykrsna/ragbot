@@ -58,8 +58,8 @@ DB_PATH = os.path.join(os.getcwd(), "knowledge_base")
 PROCESSED_CONVERSATIONS_FILE = "processed_conversations.json"
 USER_MAP_FILE = "user_map.json"
 SYNTHESIS_PROGRESS_FILE = "synthesis_progress.json"
-TRACKING_FILE = "last_msg_ids.json"
-FAILED_BATCHES_FILE = "failed_batches.jsonl"
+TRACKING_FILE = os.path.join(DATA_DIR, "last_msg_ids.json")
+FAILED_BATCHES_FILE = os.path.join(DATA_DIR, "failed_batches.jsonl")
 PROCESSED_HASHES_FILE = "processed_hashes.json"
 
 

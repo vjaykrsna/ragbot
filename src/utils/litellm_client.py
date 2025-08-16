@@ -27,7 +27,7 @@ def complete(
                 model=config.SYNTHESIS_MODEL_PROXY,
                 messages=prompt_messages,
                 stream=False,
-                cache=True,
+                cache={"no-cache": False},
             )
             return resp
         except Exception as e:
