@@ -6,9 +6,9 @@
 # ==============================================================================
 
 import os
-from dotenv import load_dotenv
 from typing import List
 
+from dotenv import load_dotenv
 
 # --- Load environment variables ---
 load_dotenv()
@@ -20,7 +20,9 @@ _group_ids_raw = os.getenv("GROUP_IDS", "")
 GROUP_IDS: List[int] = []
 if _group_ids_raw:
     try:
-        GROUP_IDS = [int(gid.strip()) for gid in _group_ids_raw.split(",") if gid.strip()]
+        GROUP_IDS = [
+            int(gid.strip()) for gid in _group_ids_raw.split(",") if gid.strip()
+        ]
     except ValueError:
         GROUP_IDS = []
 
@@ -31,6 +33,17 @@ TELEGRAM_PASSWORD: str | None = os.getenv("TELEGRAM_PASSWORD")
 
 # --- LiteLLM Proxy Configuration ---
 LITELLM_PROXY_URL: str | None = os.getenv("LITELLM_PROXY_URL")
+# Toggle whether to enable small on-disk local caches for completions/embeddings.
+# Default disabled for production; rely on LiteLLM proxy + Redis cache instead.
+USE_LOCAL_FILE_CACHE: bool = os.getenv("USE_LOCAL_FILE_CACHE", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
+# Optional: a fallback API key to use when no proxy is configured. Keep empty
+# to avoid embedding secrets in code; prefer using the proxy for rotation.
+FALLBACK_LITELLM_API_KEY: str | None = os.getenv("LITELLM_API_KEY")
 
 
 # --- Model Configuration ---
@@ -55,6 +68,7 @@ USER_MAP_FILE = "user_map.json"
 SYNTHESIS_PROGRESS_FILE = "synthesis_progress.json"
 TRACKING_FILE = "last_msg_ids.json"
 FAILED_BATCHES_FILE = "failed_batches.jsonl"
+PROCESSED_HASHES_FILE = "processed_hashes.json"
 
 
 # --- Knowledge Base & Vector DB Configuration ---
@@ -85,5 +99,43 @@ STATUS_WEIGHTS = {
 
 
 # --- Conversation Grouping ---
-CONVERSATION_TIME_THRESHOLD_SECONDS = int(os.getenv("CONVERSATION_TIME_THRESHOLD_SECONDS", "300"))
+CONVERSATION_TIME_THRESHOLD_SECONDS = int(
+    os.getenv("CONVERSATION_TIME_THRESHOLD_SECONDS", "300")
+)
 SESSION_WINDOW_SECONDS = int(os.getenv("SESSION_WINDOW_SECONDS", "3600"))
+
+
+def initialize_litellm_client_stub():
+    """A lightweight initializer kept in config for backward compatibility.
+
+    This sets up proxy/base URL and provides a fallback API key only when a
+    proxy is not configured. It intentionally does not perform rotation.
+    Projects that need advanced rotation should implement a dedicated client
+    wrapper.
+    """
+    # Delayed import to avoid import cycles
+    try:
+        import logging
+        import os as _os
+
+        import litellm
+
+        logger = logging.getLogger(__name__)
+
+        if LITELLM_PROXY_URL:
+            litellm.api_base = LITELLM_PROXY_URL
+            logger.info("Litellm initialized to use proxy at %s", LITELLM_PROXY_URL)
+        else:
+            key = FALLBACK_LITELLM_API_KEY or _os.getenv("LITELLM_API_KEY", "")
+            if key:
+                litellm.api_key = key
+                logger.info(
+                    "Litellm initialized with fallback api key from env (no proxy configured)"
+                )
+            else:
+                logger.warning(
+                    "No LITELLM_PROXY_URL or LITELLM_API_KEY configured; litellm calls may fail at runtime"
+                )
+    except Exception:
+        # best-effort only; caller modules should handle missing config at runtime
+        pass

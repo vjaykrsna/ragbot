@@ -84,6 +84,12 @@ graph TD
     python -m src.bot.main
     ```
 
+## Logging & Environment
+
+- All scripts use a centralized logging configuration located at `src/utils/logger.py` and write rotating logs to the `logs/` directory (file: `logs/chatbot.log`).
+- Keep `USE_LOCAL_FILE_CACHE=false` in production; local file caches are intended for development only. The example env file `.env.example` reflects this default.
+- Run `src/scripts/check_litellm_setup.py` (with PYTHONPATH set to the project root) to get a proxy-informed recommendation for `REQUESTS_PER_MINUTE` before running large synthesis jobs.
+
 ## Deployment
 
 The recommended deployment platform for this project is the **Oracle Cloud Free Tier**, as it provides an always-on compute instance and persistent disk storage for free.

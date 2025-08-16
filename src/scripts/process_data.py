@@ -1,21 +1,21 @@
-import os
-import io
-import json
 import glob
 import gzip
-import logging
-import tempfile
+import hashlib
 import heapq
+import json
+import logging
+import os
+import re
+import tempfile
 from collections import OrderedDict, deque
-from datetime import datetime, timedelta
-from typing import Dict, Any, Generator, List, Tuple, Optional
+from datetime import datetime
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from dateutil.parser import isoparse
-from src.utils import config
 
-# ---------------------------
-# CONFIG / DEFAULTS
-# ---------------------------
+from src.utils import config
+from src.utils.logger import setup_logging
+
 RAW_DIR = config.RAW_DATA_DIR
 PROCESSED_DIR = config.PROCESSED_DATA_DIR
 OUT_CONV_FILE = os.path.join(PROCESSED_DIR, config.PROCESSED_CONVERSATIONS_FILE)
@@ -24,23 +24,22 @@ OUT_USER_MAP_FILE = os.path.join(PROCESSED_DIR, config.USER_MAP_FILE)
 # Tuning knobs (with safe fallbacks if missing in config)
 CHUNK_SIZE = getattr(config, "STREAM_CHUNK_SIZE", 50_000)  # messages per sort-chunk
 USE_GZIP = getattr(config, "STREAM_GZIP_TEMP", True)
-MAX_MESSAGE_MAP_SIZE = getattr(config, "MAX_MESSAGE_MAP_SIZE", 200_000)  # recent msgs we can reference by id
+MAX_MESSAGE_MAP_SIZE = getattr(
+    config, "MAX_MESSAGE_MAP_SIZE", 200_000
+)  # recent msgs we can reference by id
 MAX_ACTIVE_CONVERSATIONS = getattr(config, "MAX_ACTIVE_CONVERSATIONS", 10_000)
 
 TIME_THRESHOLD_SECONDS = getattr(config, "CONVERSATION_TIME_THRESHOLD_SECONDS", 600)
 SESSION_WINDOW_SECONDS = getattr(config, "SESSION_WINDOW_SECONDS", 3600)
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] - %(message)s",
-    handlers=[logging.FileHandler("processing.log"), logging.StreamHandler()],
-)
+# Centralized logging
+setup_logging()
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 # ---------------------------
 # Utilities
 # ---------------------------
+
 
 def safe_json_loads(line: str) -> Optional[Dict[str, Any]]:
     try:
@@ -48,24 +47,30 @@ def safe_json_loads(line: str) -> Optional[Dict[str, Any]]:
     except json.JSONDecodeError:
         return None
 
+
 def parse_dt(dt: str) -> datetime:
     # RFC/ISO strings supported by isoparse
     return isoparse(dt)
 
+
 def iso(dt: datetime) -> str:
     return dt.isoformat()
+
 
 def open_temp(path: str, mode: str):
     if USE_GZIP:
         return gzip.open(path, mode + "t", encoding="utf-8")
     return open(path, mode, encoding="utf-8")
 
+
 def temp_suffix() -> str:
     return ".jsonl.gz" if USE_GZIP else ".jsonl"
+
 
 # ---------------------------
 # Anonymization map (stable across runs)
 # ---------------------------
+
 
 def load_user_map() -> Tuple[Dict[str, str], int]:
     if os.path.exists(OUT_USER_MAP_FILE):
@@ -87,13 +92,16 @@ def load_user_map() -> Tuple[Dict[str, str], int]:
             logging.warning("User map file corrupted; starting fresh.")
     return {}, 1
 
+
 def persist_user_map(user_map: Dict[str, str]) -> None:
     with open(OUT_USER_MAP_FILE, "w", encoding="utf-8") as f:
         json.dump(user_map, f, ensure_ascii=False, indent=2)
 
+
 # ---------------------------
 # Streaming readers
 # ---------------------------
+
 
 def iter_jsonl_files(raw_dir: str) -> List[str]:
     files = sorted(glob.glob(os.path.join(raw_dir, "*.jsonl")))
@@ -102,6 +110,7 @@ def iter_jsonl_files(raw_dir: str) -> List[str]:
     else:
         logging.info(f"Found {len(files)} raw files.")
     return files
+
 
 def iter_messages_from_file(path: str) -> Generator[Dict[str, Any], None, None]:
     with open(path, "r", encoding="utf-8") as f:
@@ -114,9 +123,11 @@ def iter_messages_from_file(path: str) -> Generator[Dict[str, Any], None, None]:
                 continue
             yield rec
 
+
 # ---------------------------
 # External sort in chunks
 # ---------------------------
+
 
 def write_sorted_chunks(files: List[str]) -> List[str]:
     """
@@ -157,11 +168,15 @@ def write_sorted_chunks(files: List[str]) -> List[str]:
     logging.info(f"Prepared {len(chunk_paths)} sorted chunk(s) from {total} messages.")
     return chunk_paths
 
+
 # ---------------------------
 # Merge stage (k-way merge of sorted chunks)
 # ---------------------------
 
-def iter_sorted_records(chunk_paths: List[str]) -> Generator[Dict[str, Any], None, None]:
+
+def iter_sorted_records(
+    chunk_paths: List[str],
+) -> Generator[Dict[str, Any], None, None]:
     """
     K-way merge of sorted chunk files without loading them fully.
     """
@@ -207,9 +222,11 @@ def iter_sorted_records(chunk_paths: List[str]) -> Generator[Dict[str, Any], Non
             except Exception:
                 pass
 
+
 # ---------------------------
 # Conversation builder (streaming)
 # ---------------------------
+
 
 class LRUMessageMap(OrderedDict):
     def __init__(self, maxlen: int):
@@ -229,8 +246,10 @@ class LRUMessageMap(OrderedDict):
             self.move_to_end(key)
         return v
 
+
 class ActiveConversation:
     __slots__ = ("messages", "id_set", "start", "last", "topic_id", "topic_title")
+
     def __init__(self, first_msg: Dict[str, Any]):
         self.messages: List[Dict[str, Any]] = [first_msg]
         self.id_set = {first_msg["id"]}
@@ -239,13 +258,13 @@ class ActiveConversation:
         self.topic_id = first_msg.get("topic_id")
         self.topic_title = first_msg.get("topic_title")
 
-    def try_attach(self, msg: Dict[str, Any],
-                   time_threshold: int,
-                   session_window: int) -> bool:
+    def try_attach(
+        self, msg: Dict[str, Any], time_threshold: int, session_window: int
+    ) -> bool:
         msg_dt = parse_dt(msg["date"])
         within_gap = (msg_dt - self.last).total_seconds() < time_threshold
         within_window = (msg_dt - self.start).total_seconds() < session_window
-        same_topic = (self.topic_id == msg.get("topic_id"))
+        same_topic = self.topic_id == msg.get("topic_id")
         # Relaxed: Prefer topic consistency if available
         if within_window and same_topic and within_gap:
             self.messages.append(msg)
@@ -264,14 +283,81 @@ class ActiveConversation:
     def is_expired(self, now_dt: datetime, session_window: int) -> bool:
         return (now_dt - self.start).total_seconds() >= session_window
 
+
 def save_conversation_stream(fh, conv: ActiveConversation):
-    # Write a conversation as a JSON array per line (jsonlines of conversations)
-    fh.write(json.dumps(conv.messages, ensure_ascii=False))
+    # Write a conversation as a JSON envelope per line containing metadata
+    # to support freshness, provenance and quick verification.
+    conv_texts = [m.get("content", "") for m in conv.messages]
+    joined = "\n".join(conv_texts)
+    ingestion_hash = hashlib.md5(joined.encode("utf-8")).hexdigest()
+    # Collect unique source files and source names if present
+    source_files = list(
+        {
+            m.get("source_saved_file")
+            for m in conv.messages
+            if m.get("source_saved_file")
+        }
+    )
+    source_names = list(
+        {m.get("source_name") for m in conv.messages if m.get("source_name")}
+    )
+
+    envelope = {
+        "ingestion_timestamp": iso(datetime.utcnow()),
+        "ingestion_hash": ingestion_hash,
+        "source_files": source_files,
+        "source_names": source_names,
+        "conversation": conv.messages,
+        # small derived summary fields to help synthesis without heavy processing
+        "message_count": len(conv.messages),
+    }
+
+    fh.write(json.dumps(envelope, ensure_ascii=False))
     fh.write("\n")
+
+
+# ---------------------------
+# Lightweight numeric/date normalization
+# ---------------------------
+NUMBER_RE = re.compile(
+    r"(?P<number>\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\b)\s*(?P<unit>%|percent|rs|inr|₹|km|m|kg|k|lakh|crore|million|billion)?",
+    re.IGNORECASE,
+)
+
+
+def normalize_numbers(text: str) -> List[Dict[str, Any]]:
+    """Extract simple numeric facts from text into normalized records.
+
+    This is intentionally lightweight: it extracts numbers and common units.
+    """
+    results = []
+    for m in NUMBER_RE.finditer(text):
+        num = m.group("number")
+        unit = (m.group("unit") or "").lower()
+        # normalize 1,234.56 or 1.234,56 -> 1234.56
+        norm = num.replace(",", "")
+        try:
+            val = float(norm)
+        except Exception:
+            try:
+                val = float(norm.replace(".", ""))
+            except Exception:
+                val = None
+        results.append(
+            {
+                "span": m.group(0),
+                "value": val,
+                "unit": unit,
+                "confidence": "low" if val is None else "medium",
+            }
+        )
+    return results
+
 
 # ---------------------------
 # Main pipeline
 # ---------------------------
+
 
 def main():
     logging.info("🚀 Starting Phase 2: Streaming Data Processing & KB Creation")
@@ -291,12 +377,14 @@ def main():
 
     # Output: write conversations as JSONL-of-arrays to keep memory low
     # At the end, you can post-process to wrap into a single JSON[] if you need strict JSON.
-    tmp_out_fd, tmp_out_path = tempfile.mkstemp(prefix="conversations_", suffix=".jsonl")
+    tmp_out_fd, tmp_out_path = tempfile.mkstemp(
+        prefix="conversations_", suffix=".jsonl"
+    )
     os.close(tmp_out_fd)
     conv_out = open(tmp_out_path, "w", encoding="utf-8")
 
     msg_map = LRUMessageMap(MAX_MESSAGE_MAP_SIZE)  # id -> minimal msg
-    active: deque[ActiveConversation] = deque()    # a bounded set of in-flight convs
+    active: deque[ActiveConversation] = deque()  # a bounded set of in-flight convs
 
     total_msgs = 0
     total_convs = 0
@@ -318,6 +406,12 @@ def main():
             user_map[sid] = f"User_{next_user_num}"
             next_user_num += 1
         rec["sender_id"] = user_map[sid]
+
+        # Lightweight numeric/date normalization per message to support later verification
+        try:
+            rec["normalized_values"] = normalize_numbers(content)
+        except Exception:
+            rec["normalized_values"] = []
 
         # minimal record normalization (keep fields used downstream)
         try:
@@ -344,7 +438,9 @@ def main():
         # If not attached via thread, try to attach by time/topic to the latest few active conversations
         if not attached:
             # iterate from right (most recent)
-            for i in range(min(len(active), 200)):  # check last 200 active convs to stay cheap
+            for i in range(
+                min(len(active), 200)
+            ):  # check last 200 active convs to stay cheap
                 conv = active[-1 - i]
                 if conv.try_attach(rec, TIME_THRESHOLD_SECONDS, SESSION_WINDOW_SECONDS):
                     attached = True
@@ -358,10 +454,17 @@ def main():
         # Track message in LRU for potential thread linking
         # Also remember which conv index this message belongs to for fast thread attach
         try:
-            conv_idx = len(active) - 1 if not attached else next(
-                (len(active) - 1 - i for i in range(min(len(active), 200))
-                 if rec["id"] in active[-1 - i].id_set),
-                None
+            conv_idx = (
+                len(active) - 1
+                if not attached
+                else next(
+                    (
+                        len(active) - 1 - i
+                        for i in range(min(len(active), 200))
+                        if rec["id"] in active[-1 - i].id_set
+                    ),
+                    None,
+                )
             )
             # augment record proxy with conversation index (only stored in map, not persisted)
             rec_proxy = type("MsgProxy", (), {})()
@@ -386,7 +489,9 @@ def main():
             total_convs += 1
 
         if total_msgs % 100_000 == 0:
-            logging.info(f"Processed {total_msgs:,} msgs | active_convs={len(active)} | total_convs_flushed={total_convs:,}")
+            logging.info(
+                f"Processed {total_msgs:,} msgs | active_convs={len(active)} | total_convs_flushed={total_convs:,}"
+            )
 
     # Flush remaining conversations
     while active:
@@ -396,14 +501,23 @@ def main():
     conv_out.close()
     persist_user_map(user_map)
 
-    logging.info(f"Stream processing complete: msgs={total_msgs:,}, convs={total_convs:,}, dropped={dropped:,}")
-    logging.info(f"Conversations written (JSONL, one conversation per line): {tmp_out_path}")
+    logging.info(
+        f"Stream processing complete: msgs={total_msgs:,}, convs={total_convs:,}, dropped={dropped:,}"
+    )
+    logging.info(
+        f"Conversations written (JSONL, one conversation per line): {tmp_out_path}"
+    )
     logging.info(f"User map saved: {OUT_USER_MAP_FILE}")
 
     # OPTIONAL: Convert JSONL-of-arrays -> single pretty JSON list file expected by downstream
     # This keeps memory low by streaming the rewrite.
-    logging.info(f"Rewriting conversations JSONL -> pretty JSON array at {OUT_CONV_FILE}")
-    with open(tmp_out_path, "r", encoding="utf-8") as src, open(OUT_CONV_FILE, "w", encoding="utf-8") as dest:
+    logging.info(
+        f"Rewriting conversations JSONL -> pretty JSON array at {OUT_CONV_FILE}"
+    )
+    with (
+        open(tmp_out_path, "r", encoding="utf-8") as src,
+        open(OUT_CONV_FILE, "w", encoding="utf-8") as dest,
+    ):
         dest.write("[\n")
         first = True
         for line in src:
@@ -421,6 +535,7 @@ def main():
         pass
 
     logging.info("✅ Data processing complete.")
+
 
 if __name__ == "__main__":
     main()

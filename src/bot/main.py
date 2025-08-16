@@ -7,15 +7,14 @@ from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
-    ContextTypes,
 )
 
 from src.core.rag_pipeline import RAGPipeline
 from src.utils import config
 from src.utils.logger import setup_logging
-
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -52,7 +51,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.info("Received message: %s", user_message)
 
     # Send "typing..." action
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action="typing"
+    )
 
     try:
         response = await _run_query_in_executor(rag_pipeline, user_message)
@@ -69,7 +70,9 @@ def main() -> None:
         logger.error("TELEGRAM_BOT_TOKEN is not set; aborting bot startup.")
         return
 
-    application: Application = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    application: Application = (
+        Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    )
 
     # Initialize the RAG pipeline once (blocking) and add it to bot_data
     try:
@@ -81,7 +84,9 @@ def main() -> None:
         application.bot_data["rag_pipeline"] = None
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
     logger.info("Starting bot...")
     application.run_polling()

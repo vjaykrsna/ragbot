@@ -1,29 +1,61 @@
-import os
-import json
-import chromadb
-import litellm
-import logging
-import uuid
 import concurrent.futures
-import time
+import hashlib
+import json
+import logging
+import os
 import re
 import threading
-from datetime import datetime
+import time
+import uuid
+from collections import defaultdict
+from datetime import datetime, timezone
 from functools import wraps
-from tqdm import tqdm
-from pyrate_limiter import Duration, Rate, Limiter
-from src.utils import config
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import chromadb
+import chromadb.errors
+from chromadb.api.models.Collection import Collection
 from litellm import (
+    APIConnectionError,
     APIError,
     RateLimitError,
-    APIConnectionError,
     ServiceUnavailableError,
     Timeout,
 )
-import chromadb.errors
-from chromadb.api.models.Collection import Collection
+from pyrate_limiter import Duration, Limiter, Rate
+from tqdm import tqdm
+
+from src.utils import config
+from src.utils import config as _config
+from src.utils import litellm_client
 from src.utils.logger import setup_logging
+
+# Local file cache disabled by default for production. Rely on LiteLLM proxy + Redis.
+CACHE_DIR = None
+
+
+def _hash_text(s: str) -> str:
+    return hashlib.md5(s.encode("utf-8")).hexdigest()
+
+
+def completion_cache_get(key: str) -> Optional[str]:
+    # local completion cache intentionally disabled
+    return None
+
+
+def completion_cache_set(key: str, value: str) -> None:
+    # no-op when local caching is disabled
+    return
+
+
+def embedding_cache_get(key: str) -> Optional[List[float]]:
+    # local embedding cache intentionally disabled
+    return None
+
+
+def embedding_cache_set(key: str, emb: List[float]) -> None:
+    # no-op when local caching is disabled
+    return
 
 
 setup_logging()
@@ -33,27 +65,25 @@ logger = logging.getLogger(__name__)
 chroma_lock = threading.Lock()
 fail_file_lock = threading.Lock()
 
-# Configure litellm via environment/proxy (do not hardcode keys)
-if config.LITELLM_PROXY_URL:
-    litellm.api_base = config.LITELLM_PROXY_URL
-litellm.api_key = os.getenv("LITELLM_API_KEY", "")
+# Initialize litellm via centralized config helper
 try:
-    litellm.set_verbose(False)
+    config.initialize_litellm_client_stub()
 except Exception:
-    pass
+    logging.exception("Failed to initialize litellm client via config helper")
 
 rate = Rate(config.REQUESTS_PER_MINUTE, Duration.MINUTE)
 limiter = Limiter(rate, max_delay=60000)
+
 
 # DATABASE & PROGRESS MANAGEMENT
 def setup_database() -> Collection:
     """Initializes or connects to the vector database and collection."""
     logging.info(f"Setting up vector database at: {config.DB_PATH}")
     client = chromadb.PersistentClient(path=config.DB_PATH)
-    
+
     logging.info(f"Attempting to get or create collection: '{config.COLLECTION_NAME}'")
     collection = client.get_or_create_collection(name=config.COLLECTION_NAME)
-    
+
     try:
         client.get_collection(name=config.COLLECTION_NAME)
         logging.info(f"Successfully verified collection '{config.COLLECTION_NAME}'.")
@@ -61,7 +91,9 @@ def setup_database() -> Collection:
         logging.error(f"Failed to verify collection '{config.COLLECTION_NAME}': {e}")
         raise
 
-    logging.info(f"Database collection '{config.COLLECTION_NAME}' is ready with {collection.count()} items.")
+    logging.info(
+        f"Database collection '{config.COLLECTION_NAME}' is ready with {collection.count()} items."
+    )
     return collection
 
 
@@ -156,12 +188,15 @@ def main() -> None:
 # DATA LOADING & PROCESSING
 def load_processed_data() -> List[Dict[str, Any]]:
     """Loads processed conversation data from the JSON file."""
+    file_path = os.path.join(
+        config.PROCESSED_DATA_DIR, config.PROCESSED_CONVERSATIONS_FILE
+    )
     try:
-        with open(config.PROCESSED_CONVERSATIONS_FILE, "r", encoding="utf-8") as f:
-            logging.info(f"Loading processed data from {config.PROCESSED_CONVERSATIONS_FILE}")
+        with open(file_path, "r", encoding="utf-8") as f:
+            logging.info(f"Loading processed data from {file_path}")
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.error(f"Could not load processed data: {e}")
+        logging.error(f"Could not load processed data from {file_path}: {e}")
         return []
 
 
@@ -187,28 +222,67 @@ def generate_nuggets_batch(
     conv_batch: List[Dict[str, Any]], prompt_template: str
 ) -> List[Dict[str, Any]]:
     """Generates a batch of knowledge nuggets from a list of conversations."""
-    formatted_batch = json.dumps(conv_batch, indent=2)
-    final_prompt = f"{prompt_template}\n\n**Input Conversation Batch:**\n```json\n{formatted_batch}\n```"
+    # Compact conversations to reduce token usage: keep only necessary fields
+    compact_batch = []
+    for conv in conv_batch:
+        # conv may be an envelope created earlier; extract the conversation messages
+        conv_msgs = conv.get("conversation") or conv.get("messages") or conv
+        compact_msgs = []
+        for m in conv_msgs:
+            compact_msgs.append(
+                {
+                    "id": m.get("id"),
+                    "date": m.get("date"),
+                    "sender_id": m.get("sender_id"),
+                    "content": m.get("content"),
+                    "normalized_values": m.get("normalized_values", []),
+                }
+            )
+        compact_batch.append(
+            {
+                "ingestion_hash": conv.get("ingestion_hash"),
+                "message_count": conv.get("message_count", len(compact_msgs)),
+                "messages": compact_msgs,
+            }
+        )
 
-    response = litellm.completion(
-        model=config.SYNTHESIS_MODEL_PROXY,
-        messages=[{"role": "user", "content": final_prompt}],
-        stream=False,
-        cache=True,
-    )
+    formatted_batch = json.dumps(compact_batch, separators=(",", ":"))
+    prompt_payload = f"{prompt_template}\n\n**Input Conversation Batch:**\n```json\n{formatted_batch}\n```"
 
-    if not response:
-        raise APIError("LLM returned an empty response.")
+    # Call the LLM and retry a few times if the response is malformed.
+    attempts = 3
+    response = None
+    response_content = ""
+    json_match = None
+    for attempt in range(attempts):
+        response = litellm_client.complete(
+            [{"role": "user", "content": prompt_payload}], max_retries=1
+        )
+        if not response:
+            logging.warning(
+                "LLM returned empty response, retrying (%d/%d)", attempt + 1, attempts
+            )
+            time.sleep(2**attempt)
+            continue
 
-    if getattr(response, "cache_hit", False):
-        logging.info("Completion cache hit!")
+        response_content = getattr(response.choices[0].message, "content", "") or ""
+        json_match = re.search(r"\[.*\]", response_content, re.DOTALL)
+        if json_match:
+            break
+        logging.warning(
+            "Malformed/incomplete LLM response on attempt %d/%d; retrying",
+            attempt + 1,
+            attempts,
+        )
+        time.sleep(2**attempt)
 
-    response_content = response.choices[0].message.content or ""
-    
-    json_match = re.search(r"\[.*\]", response_content, re.DOTALL)
-    if not json_match:
-        logging.warning(f"No JSON array found in LLM response: {response_content}")
-        save_failed_batch(conv_batch, "No JSON array in response", response_content)
+    if not response or not json_match:
+        logging.warning(
+            "LLM failed to return a valid JSON array after %d attempts.", attempts
+        )
+        save_failed_batch(
+            conv_batch, "No JSON array in response after retries", response_content
+        )
         return []
 
     json_str = json_match.group(0)
@@ -222,13 +296,26 @@ def generate_nuggets_batch(
 
         validated_nuggets = []
         for nugget in response_data:
-            if all(
-                key in nugget
-                for key in [
-                    "topic", "timestamp", "topic_summary", "detailed_analysis",
-                    "status", "keywords", "source_message_ids", "user_ids_involved",
-                ]
-            ):
+            required_keys = [
+                "topic",
+                "timestamp",
+                "topic_summary",
+                "detailed_analysis",
+                "status",
+                "keywords",
+                "source_message_ids",
+                "user_ids_involved",
+            ]
+            # Accept additional optional fields: ingestion_timestamp, source_names, normalized_values
+            if all(k in nugget for k in required_keys):
+                # Ensure optional normalized_values exists as list if missing
+                if "normalized_values" not in nugget:
+                    nugget["normalized_values"] = []
+                if "ingestion_timestamp" not in nugget:
+                    # default to now if LLM didn't add one
+                    nugget["ingestion_timestamp"] = datetime.now(
+                        timezone.utc
+                    ).isoformat()
                 validated_nuggets.append(nugget)
             else:
                 logging.warning(f"Invalid nugget structure: {nugget}")
@@ -245,29 +332,64 @@ def generate_nuggets_batch(
 def embed_nuggets_batch(nuggets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Generates embeddings for a batch of knowledge nuggets."""
     valid_nuggets = [
-        n for n in nuggets 
-        if isinstance(n.get("detailed_analysis"), str) and n["detailed_analysis"].strip()
+        n
+        for n in nuggets
+        if isinstance(n.get("detailed_analysis"), str)
+        and n["detailed_analysis"].strip()
     ]
-    
+
     if not valid_nuggets:
         logging.warning("No valid documents to embed in the batch.")
         return []
 
-    valid_docs = [n["detailed_analysis"] for n in valid_nuggets]
+    # For cost savings: use an embedding cache keyed by the md5 of the document text.
+    docs_to_embed = []
+    doc_indices = []
 
-    embedding_response = litellm.embedding(model=config.EMBEDDING_MODEL_PROXY, input=valid_docs)
+    for i, n in enumerate(valid_nuggets):
+        text = n["detailed_analysis"]
+        docs_to_embed.append(text)
+        doc_indices.append(i)
+
+    # Try embedding call with a couple retries to handle transient proxy/provider issues
+    embed_attempts = 2
+    embedding_response = None
+    for attempt in range(embed_attempts):
+        emb = litellm_client.embed(docs_to_embed, max_retries=1)
+        if emb is not None:
+            # emulate the previous response structure
+            embedding_response = {"data": [[{"embedding": e}] for e in emb]}
+        else:
+            embedding_response = None
+        if embedding_response and embedding_response.get("data"):
+            break
+        logging.warning(
+            "Embedding call failed or returned empty on attempt %d/%d",
+            attempt + 1,
+            embed_attempts,
+        )
+        time.sleep(1 + attempt)
 
     if not embedding_response or not embedding_response.get("data"):
+        logging.error("Embedding response invalid after retries")
         raise APIError("Embedding response is empty or invalid")
 
-    final_embeddings = [item["embedding"] for item in embedding_response["data"]]
+    returned = [item.get("embedding") for item in embedding_response.get("data", [])]
+    if len(returned) != len(docs_to_embed):
+        logging.error(
+            "Mismatch between embeddings returned and docs requested: %d vs %d",
+            len(returned),
+            len(docs_to_embed),
+        )
+        raise APIError("Embedding count mismatch")
 
-    if len(final_embeddings) != len(valid_nuggets):
-        logging.error("Mismatch between number of nuggets and embeddings returned.")
-        return []
-
-    for i, nugget in enumerate(valid_nuggets):
-        nugget["embedding"] = final_embeddings[i]
+    for idx, emb in zip(doc_indices, returned):
+        valid_nuggets[idx]["embedding"] = emb
+        # Attach embedding metadata
+        nugget = valid_nuggets[idx]
+        nugget.setdefault("meta", {})
+        nugget["meta"]["embedding_model"] = _config.EMBEDDING_MODEL_PROXY
+        nugget["meta"]["embedding_created_at"] = datetime.utcnow().isoformat()
 
     return valid_nuggets
 
@@ -283,14 +405,27 @@ def store_nuggets_batch(
         with chroma_lock:
             ids = [str(uuid.uuid4()) for _ in nuggets_with_embeddings]
             embeddings = [n["embedding"] for n in nuggets_with_embeddings]
-            
+
             metadatas = []
             for n in nuggets_with_embeddings:
                 meta = n.copy()
                 del meta["embedding"]
-                for key, value in meta.items():
-                    if isinstance(value, list):
-                        meta[key] = json.dumps(value)
+                # flatten certain large list fields to avoid bloating Chroma metadata
+                if isinstance(meta.get("normalized_values"), list):
+                    # keep a small summary count and store full list as JSON string only if small
+                    nv = meta["normalized_values"]
+                    meta["normalized_values_count"] = len(nv)
+                    if len(nv) <= 10:
+                        meta["normalized_values"] = json.dumps(nv)
+                    else:
+                        meta["normalized_values"] = json.dumps(nv[:10])
+                for key, value in list(meta.items()):
+                    if isinstance(value, list) and key != "normalized_values":
+                        # keep short lists small; stringify otherwise
+                        if len(value) > 10:
+                            meta[key] = json.dumps(value[:10])
+                        else:
+                            meta[key] = json.dumps(value)
                 metadatas.append(meta)
 
             documents = [n["detailed_analysis"] for n in nuggets_with_embeddings]
@@ -302,13 +437,19 @@ def store_nuggets_batch(
                 documents=documents,
             )
         return len(nuggets_with_embeddings)
-    except (chromadb.errors.InvalidDimensionError, chromadb.errors.DuplicateIDError) as e:
+    except (
+        chromadb.errors.InvalidDimensionError,
+        chromadb.errors.DuplicateIDError,
+    ) as e:
         logging.error(f"ChromaDB Error storing nuggets: {e}", exc_info=True)
         # Optionally, save the failed batch for inspection
         # save_failed_batch(nuggets_with_embeddings, str(e))
         return 0
     except Exception as e:
-        logging.error(f"An unexpected error occurred while storing nuggets in ChromaDB: {e}", exc_info=True)
+        logging.error(
+            f"An unexpected error occurred while storing nuggets in ChromaDB: {e}",
+            exc_info=True,
+        )
         return 0
 
 
@@ -323,9 +464,55 @@ def process_conversation_batch(
     nuggets_with_embeddings = embed_nuggets_batch(nuggets)
     if not nuggets_with_embeddings:
         return 0
+    # Run a lightweight numeric verifier to reduce hallucinated numbers.
+    verified = run_numeric_verifier(nuggets_with_embeddings, batch)
 
-    num_stored = store_nuggets_batch(collection, nuggets_with_embeddings)
+    num_stored = store_nuggets_batch(collection, verified)
     return num_stored
+
+
+def run_numeric_verifier(
+    nuggets: List[Dict[str, Any]], conversations: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Compare numeric claims in nuggets with normalized values found in source conversations.
+
+    This is intentionally conservative: if a numeric claim does not have a matching
+    normalized value in the source, we mark its confidence as 'model-only' and
+    add a flag to the nugget metadata so the UI can surface it.
+    """
+    # Build a quick lookup of numbers from source conversations
+    source_numbers = defaultdict(list)
+    for conv in conversations:
+        # conversations may be envelopes produced by process_data
+        conv_msgs = conv.get("conversation") or conv.get("messages") or []
+        for m in conv_msgs:
+            nvals = m.get("normalized_values") or []
+            for nv in nvals:
+                if nv.get("value") is not None:
+                    source_numbers[round(float(nv.get("value")), 6)].append(nv)
+
+    for nug in nuggets:
+        nug_meta = nug.setdefault("meta", {})
+        nug_meta.setdefault("verification", {})
+        mismatches = []
+        for nv in nug.get("normalized_values", []):
+            val = nv.get("value")
+            if val is None:
+                mismatches.append(nv)
+                continue
+            key = round(float(val), 6)
+            if key not in source_numbers:
+                mismatches.append(nv)
+
+        if mismatches:
+            nug_meta["verification"]["numeric_mismatch"] = True
+            nug_meta["verification"]["mismatch_count"] = len(mismatches)
+            nug_meta["confidence"] = nug_meta.get("confidence", "Low")
+        else:
+            nug_meta["verification"]["numeric_mismatch"] = False
+            nug_meta["confidence"] = nug_meta.get("confidence", "High")
+
+    return nuggets
 
 
 def synthesize_and_populate(
@@ -346,24 +533,65 @@ def synthesize_and_populate(
         for i in range(start_index, len(conversations), config.BATCH_SIZE)
     ]
 
+    # Compute a stable hash for each batch so we can skip work already done.
+    def batch_hash(batch: List[Dict[str, Any]]) -> str:
+        # Use concatenation of ingestion_hashes from envelopes (or messages fallback)
+        parts = []
+        for conv in batch:
+            ih = conv.get("ingestion_hash")
+            if not ih:
+                # fallback: compute from concatenated messages
+                msgs = conv.get("conversation") or conv.get("messages") or []
+                joined = "".join(m.get("content", "") for m in msgs)
+                ih = _hash_text(joined)
+            parts.append(ih)
+        return _hash_text("|".join(parts))
+
+    # load processed hashes to avoid re-synthesizing unchanged conversation envelopes
+    processed_hashes = set()
+    try:
+        ph = os.path.join(config.PROCESSED_DATA_DIR, config.PROCESSED_HASHES_FILE)
+        if os.path.exists(ph):
+            with open(ph, "r", encoding="utf-8") as f:
+                processed_hashes = set(json.load(f))
+    except Exception:
+        processed_hashes = set()
+
     total_nuggets_stored = 0
     with tqdm(total=len(batches), desc="Synthesizing Knowledge") as pbar:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as executor:
-            future_to_batch_index = {
-                executor.submit(
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=config.MAX_WORKERS
+        ) as executor:
+            future_to_batch_index = {}
+            batch_index_to_hash = {}
+            for i, batch in enumerate(batches):
+                bh = batch_hash(batch)
+                batch_index_to_hash[i] = bh
+                if bh in processed_hashes:
+                    logging.info(f"Skipping already-processed batch {i} (hash={bh})")
+                    pbar.update(1)
+                    continue
+                fut = executor.submit(
                     process_conversation_batch, batch, prompt_template, collection
-                ): i
-                for i, batch in enumerate(batches)
-            }
+                )
+                future_to_batch_index[fut] = i
 
             for future in concurrent.futures.as_completed(future_to_batch_index):
                 batch_index = future_to_batch_index[future]
                 try:
                     num_stored = future.result()
                     if num_stored > 0:
+                        # mark this batch as processed by its batch hash
+                        bh = batch_index_to_hash.get(batch_index)
+                        if bh:
+                            processed_hashes.add(bh)
                         total_nuggets_stored += num_stored
                         last_item_in_batch = len(batches[batch_index]) - 1
-                        last_processed_index = start_index + (batch_index * config.BATCH_SIZE) + last_item_in_batch
+                        last_processed_index = (
+                            start_index
+                            + (batch_index * config.BATCH_SIZE)
+                            + last_item_in_batch
+                        )
                         save_progress(last_processed_index)
                 except Exception as e:
                     logging.error(
@@ -372,6 +600,14 @@ def synthesize_and_populate(
                     )
                 pbar.update(1)
                 pbar.set_postfix({"Stored": f"{total_nuggets_stored}"})
+
+    # persist processed hashes
+    try:
+        php = os.path.join(config.PROCESSED_DATA_DIR, config.PROCESSED_HASHES_FILE)
+        with open(php, "w", encoding="utf-8") as f:
+            json.dump(list(processed_hashes), f)
+    except Exception:
+        pass
 
     logging.info(
         f"\n--- Knowledge Synthesis Complete ---"
