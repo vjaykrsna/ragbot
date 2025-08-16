@@ -135,7 +135,7 @@ def retry_with_backoff(
                 if attempt < max_retries - 1:
                     sleep_time = initial_wait * (backoff_factor**attempt)
                     logging.warning(
-                        f"API Error in {func.__name__} (retriable), attempt {attempt+1}/{max_retries}. Retrying in {sleep_time}s. Error: {e}",
+                        f"API Error in {func.__name__} (retriable), attempt {attempt + 1}/{max_retries}. Retrying in {sleep_time}s. Error: {e}",
                         exc_info=True,
                     )
                     time.sleep(sleep_time)
