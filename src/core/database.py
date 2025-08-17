@@ -3,7 +3,7 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Any, Dict, List
 
-from src.config.paths import PathSettings
+from src.core.config import PathSettings
 
 
 class Database:

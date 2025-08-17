@@ -1,10 +1,10 @@
 import os
 import sqlite3
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.core.config import PathSettings
-from src.database import Database
+from src.core.database import Database
 
 
 class TestDatabase(unittest.TestCase):
@@ -12,7 +12,14 @@ class TestDatabase(unittest.TestCase):
         """Set up a temporary database for testing."""
         self.test_dir = "temp_test_db_dir"
         os.makedirs(self.test_dir, exist_ok=True)
-        self.settings = PathSettings(root_dir=self.test_dir)
+
+        # Patch get_project_root to use the temporary test directory
+        self.mock_get_root = patch(
+            "src.core.config.get_project_root", return_value=self.test_dir
+        )
+        self.mock_get_root.start()
+
+        self.settings = PathSettings()
         self.db = Database(self.settings)
         # Use a single in-memory connection for the duration of the test
         self.connection = sqlite3.connect(":memory:")
@@ -27,6 +34,7 @@ class TestDatabase(unittest.TestCase):
     def tearDown(self):
         """Close the connection and remove the temporary directory."""
         self.connection.close()
+        self.mock_get_root.stop()
         import shutil
 
         shutil.rmtree(self.test_dir)

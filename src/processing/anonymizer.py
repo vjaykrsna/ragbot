@@ -10,7 +10,7 @@ import logging
 import os
 from typing import Dict, Tuple
 
-from src.config.paths import PathSettings
+from src.core.config import PathSettings
 
 
 class Anonymizer:

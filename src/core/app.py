@@ -12,8 +12,8 @@ import os
 import structlog
 
 from src.core.config import AppSettings, get_settings
+from src.core.database import Database
 from src.core.logger import setup_logging
-from src.database import Database
 
 _logger = structlog.get_logger(__name__)
 

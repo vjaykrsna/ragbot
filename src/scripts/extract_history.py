@@ -13,17 +13,10 @@ from tqdm.asyncio import tqdm_asyncio
 
 from src.core.app import initialize_app
 
-# Initialize the application context
-app_context = initialize_app()
-settings = app_context.settings
-
-# Use project root to store session files so they are persistent across runs
-session_path = os.path.join(settings.paths.root_dir, settings.telegram.session_name)
-client = TelegramClient(
-    session_path, settings.telegram.api_id, settings.telegram.api_hash
-)
-
-os.makedirs(settings.paths.raw_data_dir, exist_ok=True)
+# Globals that will be initialized in main()
+app_context = None
+settings = None
+client = None
 
 
 # HELPERS
@@ -249,6 +242,20 @@ async def extract_from_group_id(group_id, last_msg_ids):
 # MAIN ORCHESTRATION
 async def main():
     """Orchestrates the Telegram message extraction process."""
+    global app_context, settings, client
+
+    # Initialize the application context
+    app_context = initialize_app()
+    settings = app_context.settings
+
+    # Use project root to store session files so they are persistent across runs
+    session_path = os.path.join(settings.paths.root_dir, settings.telegram.session_name)
+    client = TelegramClient(
+        session_path, settings.telegram.api_id, settings.telegram.api_hash
+    )
+
+    os.makedirs(settings.paths.raw_data_dir, exist_ok=True)
+
     await client.start(
         phone=settings.telegram.phone, password=settings.telegram.password
     )

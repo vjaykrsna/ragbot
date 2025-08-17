@@ -7,7 +7,7 @@ This module provides a class for discovering and iterating through raw data file
 import logging
 from typing import Any, Dict, Generator
 
-from src.database import Database
+from src.core.database import Database
 
 
 class DataSource:
