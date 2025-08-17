@@ -5,8 +5,6 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import chromadb
-
 from src.config.paths import PathSettings
 from src.config.settings import AppSettings
 from src.config.telegram import TelegramSettings
@@ -27,7 +25,6 @@ class TestPipeline(unittest.TestCase):
         os.makedirs(self.knowledge_base_dir, exist_ok=True)
         os.makedirs(self.docs_dir, exist_ok=True)
 
-        from src.core.app import AppContext
         from src.database import Database
 
         # Create dummy raw data
@@ -107,8 +104,14 @@ class TestPipeline(unittest.TestCase):
         mock_app_context = AppContext(test_settings)
         mock_app_context.db = self.db
 
-        with patch("src.scripts.process_data.initialize_app", return_value=mock_app_context), patch(
-            "src.scripts.synthesize_knowledge.initialize_app", return_value=mock_app_context
+        with (
+            patch(
+                "src.scripts.process_data.initialize_app", return_value=mock_app_context
+            ),
+            patch(
+                "src.scripts.synthesize_knowledge.initialize_app",
+                return_value=mock_app_context,
+            ),
         ):
             # 1. Run data processing pipeline
             print("Running data processing pipeline...")

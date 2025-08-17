@@ -9,6 +9,7 @@ This project is a RAG-powered Telegram bot that can answer questions about your 
 The project is structured to separate concerns, making it easier to test, debug, and extend.
 
 -   **`src/core`**: Contains the core application services, such as settings management (`settings.py`) and centralized initialization (`app.py`).
+-   **`src/database.py`**: Encapsulates all database interactions.
 -   **`src/processing`**: Houses the modular data processing pipeline. Each step of the pipeline (data source, sorting, anonymization, conversation building) is encapsulated in its own module.
 -   **`src/rag`**: Contains the Retrieval-Augmented Generation (RAG) pipeline, which is responsible for querying the knowledge base and generating responses.
 -   **`src/bot`**: The main entrypoint for the Telegram bot.
@@ -17,7 +18,7 @@ The project is structured to separate concerns, making it easier to test, debug,
 
 ## Configuration
 
-All application settings are managed through the `AppSettings` class in `src/core/settings.py`. This class uses `pydantic-settings` to load configuration from a `.env` file and environment variables.
+All application settings are managed through dataclasses in the `src/config` directory. The `AppSettings` class in `src/config/settings.py` is the root settings object. The settings are loaded from a `.env` file and environment variables.
 
 To configure the application, create a `.env` file in the root of the project and add the required environment variables. See `.env.example` for a template.
 
@@ -44,6 +45,14 @@ For development, install the development dependencies as well, which include too
 pip install -r requirements-dev.txt
 ```
 
+### 3. Install Pre-commit Hooks
+
+This project uses `pre-commit` to run code quality checks before each commit. To install the hooks, run the following command:
+
+```bash
+pre-commit install
+```
+
 ## Testing
 
 This project uses `pytest` for testing. The tests are located in the `tests/` directory and include both high-level pipeline tests and unit tests for specific modules.
@@ -60,9 +69,17 @@ This project is equipped with a GitHub Actions CI pipeline that automatically ru
 
 You can see the status of the CI pipeline from the badge at the top of this README.
 
-### 3. Run the Data Processing Pipeline
+### 4. Run the Data Extraction Pipeline
 
-This will process the raw data in the `data/raw` directory and create the structured conversation data in `data/processed`.
+This will extract the chat history from Telegram and save it to the SQLite database.
+
+```bash
+python -m src.scripts.extract_history
+```
+
+### 5. Run the Data Processing Pipeline
+
+This will process the raw data in the database and create the structured conversation data.
 
 ```bash
 python -m src.scripts.process_data
