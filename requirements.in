@@ -1,5 +1,6 @@
 chromadb
 litellm
+litellm[proxy]
 python-dotenv
 Telethon
 tqdm
