@@ -15,17 +15,38 @@ annotated-types==0.7.0
 anyio==4.10.0
     # via
     #   httpx
+    #   mcp
     #   openai
+    #   sse-starlette
+    #   starlette
     #   watchfiles
+apscheduler==3.11.0
+    # via litellm
 attrs==25.3.0
     # via
     #   aiohttp
     #   jsonschema
     #   referencing
+azure-core==1.35.0
+    # via
+    #   azure-identity
+    #   azure-storage-blob
+azure-identity==1.24.0
+    # via litellm
+azure-storage-blob==12.26.0
+    # via litellm
 backoff==2.2.1
-    # via posthog
+    # via
+    #   litellm
+    #   posthog
 bcrypt==4.3.0
     # via chromadb
+boto3==1.36.0
+    # via litellm
+botocore==1.36.26
+    # via
+    #   boto3
+    #   s3transfer
 build==1.3.0
     # via chromadb
 cachetools==5.5.2
@@ -36,6 +57,10 @@ certifi==2025.8.3
     #   httpx
     #   kubernetes
     #   requests
+cffi==1.17.1
+    # via
+    #   cryptography
+    #   pynacl
 charset-normalizer==3.4.3
     # via requests
 chromadb==1.0.17
@@ -43,16 +68,36 @@ chromadb==1.0.17
 click==8.2.1
     # via
     #   litellm
+    #   rq
     #   typer
     #   uvicorn
 coloredlogs==15.0.1
     # via onnxruntime
+croniter==6.0.0
+    # via rq
+cryptography==43.0.3
+    # via
+    #   azure-identity
+    #   azure-storage-blob
+    #   litellm
+    #   msal
+    #   pyjwt
 distro==1.9.0
     # via
     #   openai
     #   posthog
+dnspython==2.7.0
+    # via email-validator
 durationpy==0.10
     # via kubernetes
+email-validator==2.2.0
+    # via pydantic
+fastapi==0.115.14
+    # via
+    #   fastapi-sso
+    #   litellm
+fastapi-sso==0.16.0
+    # via litellm
 filelock==3.19.1
     # via huggingface-hub
 flatbuffers==25.2.10
@@ -71,6 +116,8 @@ grpcio==1.74.0
     # via
     #   chromadb
     #   opentelemetry-exporter-otlp-proto-grpc
+gunicorn==23.0.0
+    # via litellm
 h11==0.16.0
     # via
     #   httpcore
@@ -84,8 +131,12 @@ httptools==0.6.4
 httpx==0.28.1
     # via
     #   chromadb
+    #   fastapi-sso
     #   litellm
+    #   mcp
     #   openai
+httpx-sse==0.4.1
+    # via mcp
 huggingface-hub==0.34.4
     # via tokenizers
 humanfriendly==10.0
@@ -93,6 +144,7 @@ humanfriendly==10.0
 idna==3.10
     # via
     #   anyio
+    #   email-validator
     #   httpx
     #   requests
     #   yarl
@@ -102,30 +154,49 @@ importlib-metadata==8.7.0
     #   opentelemetry-api
 importlib-resources==6.5.2
     # via chromadb
+isodate==0.7.2
+    # via azure-storage-blob
 jinja2==3.1.6
     # via litellm
 jiter==0.10.0
     # via openai
+jmespath==1.0.1
+    # via
+    #   boto3
+    #   botocore
 jsonschema==4.25.0
     # via
     #   chromadb
     #   litellm
+    #   mcp
 jsonschema-specifications==2025.4.1
     # via jsonschema
 kubernetes==33.1.0
     # via chromadb
-litellm==1.75.8
+litellm[proxy]==1.75.8
     # via -r requirements.in
+litellm-enterprise==0.1.19
+    # via litellm
+litellm-proxy-extras==0.2.17
+    # via litellm
 markdown-it-py==4.0.0
     # via rich
 markupsafe==3.0.2
     # via jinja2
+mcp==1.12.4
+    # via litellm
 mdurl==0.1.2
     # via markdown-it-py
 mmh3==5.2.0
     # via chromadb
 mpmath==1.3.0
     # via sympy
+msal==1.33.0
+    # via
+    #   azure-identity
+    #   msal-extensions
+msal-extensions==1.3.1
+    # via azure-identity
 multidict==6.6.4
     # via
     #   aiohttp
@@ -136,6 +207,7 @@ numpy==2.3.2
     #   onnxruntime
 oauthlib==3.3.1
     # via
+    #   fastapi-sso
     #   kubernetes
     #   requests-oauthlib
 onnxruntime==1.22.1
@@ -163,14 +235,19 @@ opentelemetry-sdk==1.36.0
 opentelemetry-semantic-conventions==0.57b0
     # via opentelemetry-sdk
 orjson==3.11.2
-    # via chromadb
+    # via
+    #   chromadb
+    #   litellm
 overrides==7.7.0
     # via chromadb
 packaging==25.0
     # via
     #   build
+    #   gunicorn
     #   huggingface-hub
     #   onnxruntime
+polars==1.32.3
+    # via litellm
 posthog==5.4.0
     # via chromadb
 propcache==0.3.2
@@ -192,34 +269,60 @@ pyasn1-modules==0.4.2
     # via google-auth
 pybase64==1.4.2
     # via chromadb
-pydantic==2.11.7
+pycparser==2.22
+    # via cffi
+pydantic[email]==2.11.7
     # via
     #   chromadb
+    #   fastapi
+    #   fastapi-sso
     #   litellm
+    #   mcp
     #   openai
+    #   pydantic-settings
 pydantic-core==2.33.2
     # via pydantic
+pydantic-settings==2.10.1
+    # via mcp
 pygments==2.19.2
     # via rich
+pyjwt[crypto]==2.10.1
+    # via
+    #   litellm
+    #   msal
+pynacl==1.5.0
+    # via litellm
 pypika==0.48.9
     # via chromadb
 pyproject-hooks==1.2.0
     # via build
 python-dateutil==2.9.0.post0
     # via
+    #   botocore
+    #   croniter
     #   kubernetes
     #   posthog
 python-dotenv==1.1.1
     # via
     #   -r requirements.in
     #   litellm
+    #   pydantic-settings
     #   uvicorn
+python-multipart==0.0.18
+    # via
+    #   litellm
+    #   mcp
+pytz==2025.2
+    # via croniter
 pyyaml==6.0.2
     # via
     #   chromadb
     #   huggingface-hub
     #   kubernetes
+    #   litellm
     #   uvicorn
+redis==6.4.0
+    # via rq
 referencing==0.36.2
     # via
     #   jsonschema
@@ -228,30 +331,38 @@ regex==2025.7.34
     # via tiktoken
 requests==2.32.4
     # via
+    #   azure-core
     #   huggingface-hub
     #   kubernetes
+    #   msal
     #   posthog
     #   requests-oauthlib
     #   tiktoken
 requests-oauthlib==2.0.0
     # via kubernetes
-rich==14.1.0
+rich==13.7.1
     # via
     #   -r requirements.in
     #   chromadb
+    #   litellm
     #   typer
 rpds-py==0.27.0
     # via
     #   jsonschema
     #   referencing
+rq==2.5.0
+    # via litellm
 rsa==4.9.1
     # via
     #   google-auth
     #   telethon
+s3transfer==0.11.3
+    # via boto3
 shellingham==1.5.4
     # via typer
 six==1.17.0
     # via
+    #   azure-core
     #   kubernetes
     #   posthog
     #   python-dateutil
@@ -259,6 +370,12 @@ sniffio==1.3.1
     # via
     #   anyio
     #   openai
+sse-starlette==3.0.2
+    # via mcp
+starlette==0.46.2
+    # via
+    #   fastapi
+    #   mcp
 structlog==25.4.0
     # via -r requirements.in
 sympy==1.14.0
@@ -283,7 +400,11 @@ typer==0.16.0
     # via chromadb
 typing-extensions==4.14.1
     # via
+    #   azure-core
+    #   azure-identity
+    #   azure-storage-blob
     #   chromadb
+    #   fastapi
     #   huggingface-hub
     #   openai
     #   opentelemetry-api
@@ -295,21 +416,33 @@ typing-extensions==4.14.1
     #   typer
     #   typing-inspection
 typing-inspection==0.4.1
-    # via pydantic
+    # via
+    #   pydantic
+    #   pydantic-settings
+tzlocal==5.3.1
+    # via apscheduler
 urllib3==2.5.0
     # via
+    #   botocore
     #   kubernetes
     #   requests
-uvicorn[standard]==0.35.0
-    # via chromadb
+uvicorn[standard]==0.29.0
+    # via
+    #   chromadb
+    #   litellm
+    #   mcp
 uvloop==0.21.0
-    # via uvicorn
+    # via
+    #   litellm
+    #   uvicorn
 watchfiles==1.1.0
     # via uvicorn
 websocket-client==1.8.0
     # via kubernetes
-websockets==15.0.1
-    # via uvicorn
+websockets==13.1
+    # via
+    #   litellm
+    #   uvicorn
 yarl==1.20.1
     # via aiohttp
 zipp==3.23.0
