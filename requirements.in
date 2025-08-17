@@ -6,3 +6,4 @@ Telethon
 tqdm
 structlog
 rich
+pyrate-limiter
