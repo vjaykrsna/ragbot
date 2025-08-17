@@ -3,7 +3,7 @@ import asyncio
 import inspect
 import logging
 
-from src.scripts import extract_history, process_data, synthesize_knowledge
+from src.scripts import extract_history, synthesize_knowledge
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,12 +29,6 @@ def run_cli(argv: list[str]):
         "extract", help="Extract message history from Telegram."
     )
     parser_extract.set_defaults(func=extract_history.main)
-
-    # --- Process Command ---
-    parser_process = subparsers.add_parser(
-        "process", help="Process raw data into structured conversations."
-    )
-    parser_process.set_defaults(func=process_data.main)
 
     # --- Synthesize Command ---
     parser_synthesize = subparsers.add_parser(
