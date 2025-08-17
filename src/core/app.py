@@ -8,6 +8,7 @@ configured application environment.
 """
 
 import os
+
 import structlog
 
 from src.config.settings import AppSettings, load_settings
@@ -31,7 +32,9 @@ class AppContext:
         if not os.path.exists(self.db.db_path):
             self.db_client = chromadb.PersistentClient(path=self.db.db_path)
         else:
-            self.db_client = chromadb.PersistentClient(path=os.path.dirname(self.db.db_path))
+            self.db_client = chromadb.PersistentClient(
+                path=os.path.dirname(self.db.db_path)
+            )
         _logger.info("Application context initialized.")
 
     @classmethod

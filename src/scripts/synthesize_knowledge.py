@@ -35,6 +35,7 @@ from tqdm import tqdm
 
 from src.config.settings import AppSettings
 from src.core.app import initialize_app
+from src.database import Database
 from src.services import litellm_client
 
 logger = logging.getLogger(__name__)
