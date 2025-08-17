@@ -20,17 +20,46 @@ from pathlib import Path
 # --- Configuration ---
 SRC_DIRECTORY = "src"
 THIRD_PARTY_VARS = {
-    "REDIS": {
-        "REDIS_HOST": "localhost",
-        "REDIS_PORT": "6379",
-        "REDIS_PASSWORD": "",
-    },
-    "LITELLM": {
-        "LITELLM_PROXY_URL": "http://0.0.0.0:8000",
-        "LITELLM_API_KEY": "your_litellm_api_key",
-        "GEMINI_API_KEY": "your_gemini_api_key",
-    },
+    # This section is for variables that may not be found by the AST scanner,
+    # typically because they are used by third-party libraries called via exec
+    # or not directly accessed with os.getenv in our code.
 }
+
+# --- Manual Section ---
+# This content will be appended to the end of the .env.example file.
+# It's used for complex variables that require detailed explanations and examples.
+MANUAL_ENV_SECTION = """
+# --- LiteLLM Configuration ---
+# The entire LiteLLM configuration, including the model list for load balancing,
+# is now defined in a single JSON object.
+# IMPORTANT: This must be a single line of valid JSON.
+# You will need to define your GEMINI_API_KEY_1 through GEMINI_API_KEY_15 as
+# separate environment variables for LiteLLM to pick them up.
+# You also need to define REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD if you are using cache.
+
+LITELLM_CONFIG_JSON={"model_list": [{"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_1"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_2"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_3"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_4"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_5"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_6"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_7"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_8"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_9"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_10"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_11"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_12"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_13"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_14"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-1.5-flash", "api_key": "os.environ/GEMINI_API_KEY_15"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_1"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_2"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_3"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_4"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_5"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_6"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_7"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_8"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_9"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_10"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_11"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_12"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_13"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_14"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_15"}}], "router_settings": {"routing_strategy": "usage-based-routing-v2", "cache_responses": true, "cache_kwargs": {"type": "redis", "host": "os.environ/REDIS_HOST", "port": "os.environ/REDIS_PORT", "password": "os.environ/REDIS_PASSWORD", "ttl": 3600}}, "litellm_settings": {"drop_params": true, "turn_off_message_logging": true, "set_verbose": false}}
+
+# You will also need to set the API keys and any Redis credentials in your environment:
+GEMINI_API_KEY_1=
+GEMINI_API_KEY_2=
+GEMINI_API_KEY_3=
+GEMINI_API_KEY_4=
+GEMINI_API_KEY_5=
+GEMINI_API_KEY_6=
+GEMINI_API_KEY_7=
+GEMINI_API_KEY_8=
+GEMINI_API_KEY_9=
+GEMINI_API_KEY_10=
+GEMINI_API_KEY_11=
+GEMINI_API_KEY_12=
+GEMINI_API_KEY_13=
+GEMINI_API_KEY_14=
+GEMINI_API_KEY_15=
+
+REDIS_HOST=
+REDIS_PORT=6379
+REDIS_PASSWORD=
+"""
 
 
 class EnvVarVisitor(ast.NodeVisitor):
@@ -123,6 +152,10 @@ def generate_env_example():
         for env_name, default_value in sorted(combined_vars.items()):
             f.write(f"{env_name}={default_value}\n")
         f.write("\n")
+
+        # Add the manual section for complex variables
+        if MANUAL_ENV_SECTION:
+            f.write(MANUAL_ENV_SECTION)
 
     print(f"Successfully generated {env_example_path}")
     print(f"Discovered {len(scanned_vars)} application-specific variables.")

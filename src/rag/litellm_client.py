@@ -8,28 +8,54 @@ flags (cache=True) and logging.
 
 import logging
 import time
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional
+
+import litellm
 
 from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# --- Lazy Client Initialization ---
+# The router is initialized lazily on the first call to complete() or embed()
+# to prevent `get_settings()` from running on module import. This allows
+# utility scripts to import this module without a fully configured environment.
+_router: Optional[litellm.Router] = None
+
+
+def _get_router() -> litellm.Router:
+    """Initializes and returns the LiteLLM router, ensuring it's a singleton."""
+    global _router
+    if _router is None:
+        logger.info("Initializing LiteLLM router...")
+        settings = get_settings().litellm
+
+        # Set general LiteLLM settings
+        litellm.drop_params = settings.drop_params
+        litellm.turn_off_message_logging = settings.turn_off_message_logging
+        litellm.set_verbose = settings.set_verbose
+
+        # Convert dataclasses to dicts for LiteLLM
+        model_list_dict = [asdict(m) for m in settings.model_list]
+        router_settings_dict = asdict(settings.router_settings)
+
+        # Instantiate the router
+        _router = litellm.Router(model_list=model_list_dict, **router_settings_dict)
+        logger.info("LiteLLM router initialized.")
+    return _router
+
 
 def complete(
     prompt_messages: List[Dict[str, str]], max_retries: int = 3
 ) -> Optional[Any]:
-    """Call litellm.completion with a few retries. Returns the raw response or None."""
-    import litellm
-
-    settings = get_settings()
-
+    """Call router.completion with retries. Returns the raw response or None."""
+    router = _get_router()
     for attempt in range(max_retries):
         try:
-            resp = litellm.completion(
-                model=settings.litellm.synthesis_model_proxy,
+            resp = router.completion(
+                model="gemini-synthesis-model",  # Target the synthesis model group
                 messages=prompt_messages,
-                stream=False,
-                cache={"no-cache": False},
             )
             return resp
         except Exception as e:
@@ -46,15 +72,13 @@ def complete(
 
 
 def embed(texts: List[str], max_retries: int = 2) -> Optional[List[List[float]]]:
-    """Call litellm.embedding with retries. Returns list of vectors or None."""
-    import litellm
-
-    settings = get_settings()
-
+    """Call router.embedding with retries. Returns list of vectors or None."""
+    router = _get_router()
     for attempt in range(max_retries):
         try:
-            resp = litellm.embedding(
-                model=settings.litellm.embedding_model_proxy, input=texts
+            resp = router.embedding(
+                model="gemini-embedding-model",  # Target the embedding model group
+                input=texts,
             )
             if resp and resp.get("data"):
                 return [item.get("embedding") for item in resp["data"]]
