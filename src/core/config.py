@@ -114,7 +114,10 @@ class LiteLLMModelInfo:
 
 @dataclass
 class LiteLLMSettings:
-    """Settings for LiteLLM client."""
+    """
+    Settings for LiteLLM client.
+    This entire configuration is loaded from a single JSON object.
+    """
 
     # General settings
     drop_params: bool = True
@@ -122,15 +125,16 @@ class LiteLLMSettings:
     set_verbose: bool = False
 
     # Model and Router settings
+    embedding_model_name: str | None = (
+        None  # The actual model name, e.g., "text-embedding-ada-002"
+    )
+    embedding_model_proxy: str | None = (
+        None  # The proxy/alias for the model, e.g., "azure-embedding-model"
+    )
     model_list: List[LiteLLMModelInfo] = field(default_factory=list)
     router_settings: LiteLLMRouterSettings = field(
         default_factory=LiteLLMRouterSettings
     )
-
-    # Legacy simple settings (can be deprecated later)
-    synthesis_model_name: str = "gemini-pro"
-    embedding_model_name: str = "text-embedding-ada-002"
-    embedding_model_proxy: str | None = None
 
 
 @dataclass
@@ -227,9 +231,14 @@ def get_settings() -> AppSettings:
     path_settings = PathSettings()
 
     # --- LiteLLM Settings ---
-    # Parse complex model list from JSON string
-    model_list_json = os.getenv("LITELLM_MODEL_LIST_JSON", "[]")
-    model_list_data = json.loads(model_list_json)
+    litellm_config_json = os.getenv("LITELLM_CONFIG_JSON")
+    if not litellm_config_json:
+        raise RuntimeError("Environment variable 'LITELLM_CONFIG_JSON' must be set.")
+
+    litellm_config_data = json.loads(litellm_config_json)
+
+    # Build the model list
+    model_list_data = litellm_config_data.get("model_list", [])
     model_list = [
         LiteLLMModelInfo(
             model_name=m["model_name"],
@@ -238,39 +247,42 @@ def get_settings() -> AppSettings:
         for m in model_list_data
     ]
 
-    # Cache settings
-    cache_kwargs = LiteLLMCacheSettings(
-        type=os.getenv("LITELLM_CACHE_TYPE", "redis"),
-        host=os.getenv("REDIS_HOST"),
-        port=int(os.getenv("REDIS_PORT", "6380")),
-        password=os.getenv("REDIS_PASSWORD"),
-        ttl=int(os.getenv("LITELLM_CACHE_TTL", "3600")),
-    )
+    # Build the cache settings
+    router_settings_data = litellm_config_data.get("router_settings", {})
+    cache_kwargs_data = router_settings_data.get("cache_kwargs", {})
+    cache_kwargs = LiteLLMCacheSettings(**cache_kwargs_data)
 
-    # Router settings
+    # Build the router settings
     router_settings = LiteLLMRouterSettings(
-        routing_strategy=os.getenv(
-            "LITELLM_ROUTING_STRATEGY", "usage-based-routing-v2"
+        routing_strategy=router_settings_data.get(
+            "routing_strategy", "usage-based-routing-v2"
         ),
-        cache_responses=os.getenv("LITELLM_CACHE_RESPONSES", "true").lower() == "true",
+        cache_responses=router_settings_data.get("cache_responses", True),
         cache_kwargs=cache_kwargs,
     )
 
+    # Build the main LiteLLM settings
+    litellm_settings_data = litellm_config_data.get("litellm_settings", {})
     litellm_settings = LiteLLMSettings(
-        drop_params=os.getenv("LITELLM_DROP_PARAMS", "true").lower() == "true",
-        turn_off_message_logging=os.getenv(
-            "LITELLM_TURN_OFF_MESSAGE_LOGGING", "true"
-        ).lower()
-        == "true",
-        set_verbose=os.getenv("LITELLM_SET_VERBOSE", "false").lower() == "true",
+        drop_params=litellm_settings_data.get("drop_params", True),
+        turn_off_message_logging=litellm_settings_data.get(
+            "turn_off_message_logging", True
+        ),
+        set_verbose=litellm_settings_data.get("set_verbose", False),
         model_list=model_list,
         router_settings=router_settings,
-        synthesis_model_name=os.getenv("SYNTHESIS_MODEL_NAME", "gemini-pro"),
-        embedding_model_name=os.getenv(
-            "EMBEDDING_MODEL_NAME", "text-embedding-ada-002"
-        ),
-        embedding_model_proxy=os.getenv("EMBEDDING_MODEL_PROXY"),
     )
+
+    # --- Find and set the embedding model from the model list ---
+    embedding_model_info = next(
+        (m for m in model_list if "embedding" in m.litellm_params.model.lower()),
+        None,
+    )
+    if embedding_model_info:
+        litellm_settings.embedding_model_name = (
+            embedding_model_info.litellm_params.model
+        )
+        litellm_settings.embedding_model_proxy = embedding_model_info.model_name
 
     # --- Synthesis Settings ---
     synthesis_settings = SynthesisSettings(
