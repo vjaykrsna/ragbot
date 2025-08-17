@@ -41,7 +41,7 @@ class DataProcessingPipeline:
         self.conv_builder = conv_builder
         self.logger = logging.getLogger(__name__)
         self.number_re = re.compile(
-            r"(?P<number>\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\b)\s*(?P<unit>%|percent|rs|inr|₹|km|m|kg|k|lakh|crore|million|billion)?",
+            r"(?P<number>\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\b)\s*(?P<unit>%|percent\b|rs\b|inr\b|₹|km\b|m\b|kg\b|k\b|lakh\b|crore\b|million\b|billion\b)?",
             re.IGNORECASE,
         )
 

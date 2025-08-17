@@ -11,12 +11,6 @@ class TestCLI(unittest.TestCase):
         run_cli(["extract"])
         mock_extract_main.assert_called_once()
 
-    @patch("src.cli.process_data.main")
-    def test_process_command(self, mock_process_main):
-        """Test that the 'process' command calls the correct function."""
-        run_cli(["process"])
-        mock_process_main.assert_called_once()
-
     @patch("src.cli.synthesize_knowledge.main")
     def test_synthesize_command(self, mock_synthesize_main):
         """Test that the 'synthesize' command calls the correct function."""

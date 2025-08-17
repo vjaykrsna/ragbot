@@ -7,3 +7,4 @@ tqdm
 structlog
 rich
 pyrate-limiter
+python-telegram-bot
