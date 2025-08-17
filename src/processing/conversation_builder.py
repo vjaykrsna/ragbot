@@ -180,7 +180,17 @@ class ConversationBuilder:
         for m in conv.messages:
             content = m.get("content", "")
             if isinstance(content, dict):
-                content = content.get("text", "")
+                # Handle structured content like polls by formatting it into a readable string
+                question = content.get("question", "Poll")
+                options = content.get("options", [])
+                options_str = "\n".join(
+                    f"- {opt.get('text', '')} ({opt.get('voters', 0)} votes)"
+                    for opt in options
+                )
+                total_voters = content.get("total_voters", 0)
+                content = (
+                    f"Poll: {question}\n{options_str}\nTotal Voters: {total_voters}"
+                )
             conv_texts.append(content or "")
         joined = "\n".join(conv_texts)
         ingestion_hash = hashlib.md5(joined.encode("utf-8")).hexdigest()

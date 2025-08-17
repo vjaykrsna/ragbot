@@ -1,12 +1,13 @@
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class LiteLLMSettings(BaseModel):
+@dataclass
+class LiteLLMSettings:
     """Settings for LiteLLM proxy and models."""
 
-    proxy_url: str | None = Field(None, env="LITELLM_PROXY_URL")
-    use_local_file_cache: bool = Field(False, env="USE_LOCAL_FILE_CACHE")
-    proxy_api_key: str | None = Field(None, env="LITELLM_PROXY_API_KEY")
+    proxy_url: str | None = None
+    use_local_file_cache: bool = False
+    proxy_api_key: str | None = None
     synthesis_model_name: str = "gemini-synthesis-model"
     embedding_model_name: str = "gemini-embedding-model"
 

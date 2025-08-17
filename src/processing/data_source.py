@@ -4,53 +4,28 @@ Data source component for the processing pipeline.
 This module provides a class for discovering and iterating through raw data files.
 """
 
-import glob
-import json
 import logging
-import os
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator
 
-from src.config.paths import PathSettings
+from src.database import Database
 
 
 class DataSource:
     """
-    Discovers and provides an iterator for raw JSONL data files.
+    Provides an iterator for messages stored in the database.
     """
 
-    def __init__(self, settings: PathSettings):
+    def __init__(self, db: Database):
         """
-        Initializes the DataSource with path settings.
+        Initializes the DataSource with a database instance.
 
         Args:
-            settings: The path settings for the application.
+            db: The database to read from.
         """
-        self.settings = settings
+        self.db = db
         self.logger = logging.getLogger(__name__)
 
-    def _find_files(self) -> List[str]:
-        """Finds and sorts all .jsonl files in the raw data directory."""
-        files = sorted(glob.glob(os.path.join(self.settings.raw_data_dir, "*.jsonl")))
-        if not files:
-            self.logger.warning(
-                f"No .jsonl files found in '{self.settings.raw_data_dir}'. "
-                "Run extraction first."
-            )
-        else:
-            self.logger.info(f"Found {len(files)} raw files.")
-        return files
-
     def __iter__(self) -> Generator[Dict[str, Any], None, None]:
-        """Iterates through all messages in all found data files."""
-        files = self._find_files()
-        for file_path in files:
-            with open(file_path, "r", encoding="utf-8") as f:
-                for i, line in enumerate(f, 1):
-                    try:
-                        rec = json.loads(line)
-                        if rec.get("date"):
-                            yield rec
-                    except json.JSONDecodeError:
-                        self.logger.warning(
-                            f"Skipping corrupted JSON on line {i} in {file_path}"
-                        )
+        """Iterates through all messages in the database."""
+        self.logger.info("Reading messages from the database.")
+        yield from self.db.get_all_messages()

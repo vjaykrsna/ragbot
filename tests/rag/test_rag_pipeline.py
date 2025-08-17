@@ -9,7 +9,27 @@ from src.rag.rag_pipeline import RAGPipeline
 class TestRAGPipeline(unittest.TestCase):
     def setUp(self):
         # Create a dummy AppSettings object for the test
-        self.settings = AppSettings(telegram=TelegramSettings(bot_token="fake_token"))
+        from src.config.conversation import ConversationSettings
+        from src.config.litellm import LiteLLMSettings
+        from src.config.paths import PathSettings
+        from src.config.rag import RAGSettings
+        from src.config.synthesis import SynthesisSettings
+
+        self.settings = AppSettings(
+            telegram=TelegramSettings(
+                bot_token="fake_token",
+                group_ids=[],
+                session_name="test_session",
+                phone=None,
+                password=None,
+            ),
+            litellm=LiteLLMSettings(),
+            paths=PathSettings(),
+            synthesis=SynthesisSettings(),
+            rag=RAGSettings(),
+            conversation=ConversationSettings(),
+            console_log_level="INFO",
+        )
 
         # Mock the dependencies
         self.mock_chroma_client = MagicMock()
@@ -49,7 +69,7 @@ class TestRAGPipeline(unittest.TestCase):
         mock_litellm_client_patch.complete = self.mock_litellm_client.complete
 
         # Initialize the RAG pipeline
-        rag_pipeline = RAGPipeline(self.settings)
+        rag_pipeline = RAGPipeline(self.settings, self.mock_chroma_client)
 
         # Call the query method
         query = "What color are apples?"

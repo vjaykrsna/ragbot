@@ -87,8 +87,12 @@ class KnowledgeSynthesizer:
     Orchestrates the entire knowledge base population process.
     """
 
-    def __init__(self, settings: AppSettings):
+    def __init__(
+        self, settings: AppSettings, db: "Database", db_client: chromadb.Client
+    ):
         self.settings = settings
+        self.db = db
+        self.db_client = db_client
         self.rate = Rate(self.settings.synthesis.requests_per_minute, Duration.MINUTE)
         self.limiter = Limiter(self.rate, max_delay=60000)
 
@@ -108,16 +112,12 @@ class KnowledgeSynthesizer:
 
     def _setup_database(self) -> Collection:
         """Initializes or connects to the vector database and collection."""
-        db_path = self.settings.paths.db_path
         collection_name = self.settings.rag.collection_name
-        logger.info(f"Setting up vector database at: {db_path}")
-        client = chromadb.PersistentClient(path=db_path)
-
         logger.info(f"Attempting to get or create collection: '{collection_name}'")
-        collection = client.get_or_create_collection(name=collection_name)
+        collection = self.db_client.get_or_create_collection(name=collection_name)
 
         try:
-            client.get_collection(name=collection_name)
+            self.db_client.get_collection(name=collection_name)
             logger.info(f"Successfully verified collection '{collection_name}'.")
         except Exception as e:
             logger.error(f"Failed to verify collection '{collection_name}': {e}")
@@ -585,7 +585,9 @@ class KnowledgeSynthesizer:
 def main() -> None:
     """Initializes the application and runs the knowledge synthesis pipeline."""
     app_context = initialize_app()
-    synthesizer = KnowledgeSynthesizer(app_context.settings)
+    synthesizer = KnowledgeSynthesizer(
+        app_context.settings, app_context.db, app_context.db_client
+    )
     synthesizer.run()
 
 

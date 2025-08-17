@@ -27,12 +27,10 @@ class LiteLLMEmbeddingFunction:
 class RAGPipeline:
     """Retrieval-Augmented Generation pipeline."""
 
-    def __init__(self, settings: AppSettings) -> None:
+    def __init__(self, settings: AppSettings, db_client: chromadb.Client) -> None:
         self.settings = settings
+        self.db_client = db_client
         try:
-            self.db_client: chromadb.Client = chromadb.PersistentClient(
-                path=self.settings.paths.db_path
-            )
             embedding_function = LiteLLMEmbeddingFunction(
                 model_name=self.settings.litellm.embedding_model_name
             )
@@ -47,8 +45,7 @@ class RAGPipeline:
             )
         except Exception:
             logger.exception(
-                "Failed to connect to ChromaDB at path '%s' and collection '%s'.",
-                self.settings.paths.db_path,
+                "Failed to connect to ChromaDB collection '%s'.",
                 self.settings.rag.collection_name,
             )
             raise

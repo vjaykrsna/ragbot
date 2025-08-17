@@ -7,11 +7,12 @@ main.py, process_data.py) should call `initialize_app` to get a fully
 configured application environment.
 """
 
+import os
 import structlog
 
-from src.config.settings import load_settings
-from src.core.container import create_container
+from src.config.settings import AppSettings, load_settings
 from src.core.logger import setup_logging
+from src.database import Database
 
 _logger = structlog.get_logger(__name__)
 
@@ -21,10 +22,16 @@ class AppContext:
     Centralized application context.
     """
 
-    def __init__(self):
-        self.settings = load_settings()
+    def __init__(self, settings: AppSettings):
+        import chromadb
+
+        self.settings = settings
         setup_logging(self.settings)
-        self.container = create_container(self.settings)
+        self.db = Database(self.settings.paths)
+        if not os.path.exists(self.db.db_path):
+            self.db_client = chromadb.PersistentClient(path=self.db.db_path)
+        else:
+            self.db_client = chromadb.PersistentClient(path=os.path.dirname(self.db.db_path))
         _logger.info("Application context initialized.")
 
     @classmethod
@@ -32,7 +39,8 @@ class AppContext:
         """
         Creates a new instance of the application context.
         """
-        return cls()
+        settings = load_settings()
+        return cls(settings)
 
 
 def initialize_app() -> AppContext:

@@ -9,11 +9,11 @@ __pycache__/
 .venv
 
 # IDEs and editors
+.crush/
 .idea/
 .vscode/
 
 # Databases and Session Files
-/knowledge_base/
 *.session
 *.session-journal
 
@@ -23,10 +23,3 @@ __pycache__/
 # Log files
 /logs/
 *.log
-
-# LiteLLM cache
-.litellm/
-
-# Progress tracking files
-last_msg_ids.json
-synthesis_progress.json

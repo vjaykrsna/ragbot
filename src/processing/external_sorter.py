@@ -23,26 +23,23 @@ class ExternalSorter:
     Sorts a stream of messages from a DataSource using external sorting.
     """
 
-    def __init__(
-        self, data_source: DataSource, chunk_size: int = 50_000, use_gzip: bool = True
-    ):
+    def __init__(self, chunk_size: int = 50_000, use_gzip: bool = True):
         """
         Initializes the ExternalSorter.
         """
-        self.data_source = data_source
         self.chunk_size = chunk_size
         self.use_gzip = use_gzip
         self.logger = logging.getLogger(__name__)
 
-    def __iter__(self) -> Generator[Dict[str, Any], None, None]:
+    def sort(self, data_source: DataSource) -> Generator[Dict[str, Any], None, None]:
         """Sorts the data and yields messages in chronological order."""
-        chunk_paths = self._write_sorted_chunks()
+        chunk_paths = self._write_sorted_chunks(data_source)
         if not chunk_paths:
             return
 
         yield from self._merge_sorted_chunks(chunk_paths)
 
-    def _write_sorted_chunks(self) -> List[str]:
+    def _write_sorted_chunks(self, data_source: DataSource) -> List[str]:
         """
         Reads messages from the data source, sorts them into chunks, and writes
         them to temporary files.
@@ -67,7 +64,7 @@ class ExternalSorter:
             self.logger.info(f"Wrote sorted chunk with {len(buf)} msgs -> {tmp_path}")
             buf = []
 
-        for rec in self.data_source:
+        for rec in data_source:
             try:
                 dt = isoparse(rec["date"])
                 buf.append((dt.isoformat(), json.dumps(rec, ensure_ascii=False)))

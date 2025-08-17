@@ -62,27 +62,18 @@ class TelegramObjectEncoder(json.JSONEncoder):
 
 
 # DATA STORAGE & PROGRESS
-def save_message_jsonl(chat_title, topic_id, messages):
-    """Saves messages to a .jsonl file with a unique name."""
-    safe_title = safe_filename(chat_title)
-    # Include topic_id to prevent filename collisions for topics
-    filename = (
-        f"{safe_title}_{topic_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
-    )
-    filepath = os.path.join(settings.paths.raw_data_dir, filename)
-    # Attach source-level metadata to each message before saving so downstream
-    ingestion_ts = datetime.utcnow().isoformat()
-    with open(filepath, "w", encoding="utf-8") as f:
-        for msg in messages:
-            # Preserve original fields but add source metadata used later
-            msg.setdefault("source_name", chat_title)
-            msg.setdefault("source_group_id", msg.get("group_id") or None)
-            msg.setdefault("source_topic_id", topic_id)
-            msg.setdefault("source_saved_file", os.path.basename(filepath))
-            msg.setdefault("ingestion_timestamp", ingestion_ts)
-            json.dump(msg, f, ensure_ascii=False, cls=TelegramObjectEncoder)
-            f.write("\n")
-    logging.info(f"✅ Saved {len(messages)} messages to {filepath}")
+def save_messages_to_db(chat_title, topic_id, messages):
+    """Saves messages to the SQLite database."""
+    db = app_context.db
+    ingestion_ts = datetime.now().isoformat()
+    for msg in messages:
+        msg["source_name"] = chat_title
+        msg["source_group_id"] = msg.get("group_id")
+        msg["source_topic_id"] = topic_id
+        msg["source_saved_file"] = None  # No longer saving to individual files
+        msg["ingestion_timestamp"] = ingestion_ts
+    db.insert_messages(messages)
+    logging.info(f"✅ Saved {len(messages)} messages to the database")
 
 
 def load_last_msg_ids():
@@ -112,18 +103,30 @@ def get_message_details(msg):
     # --- Poll Detection ---
     if isinstance(msg.media, telethon.tl.types.MessageMediaPoll):
         poll = msg.media.poll
-        content = poll.question
-        extra_data["options"] = []
-        if msg.media.results and msg.media.results.results:
-            for answer, result in zip(poll.answers, msg.media.results.results):
-                extra_data["options"].append(
-                    {"text": answer.text, "voters": result.voters}
-                )
+        results = msg.media.results
+
+        options = []
+        if results and results.results:
+            for answer, result in zip(poll.answers, results.results):
+                option = {"text": answer.text, "voters": result.voters}
+                if hasattr(result, "chosen") and result.chosen:
+                    option["chosen"] = True
+                if hasattr(result, "correct") and result.correct:
+                    option["correct"] = True
+                options.append(option)
         else:
-            extra_data["options"] = [
-                {"text": answer.text, "voters": 0} for answer in poll.answers
-            ]
-        return "poll", content, extra_data
+            options = [{"text": answer.text, "voters": 0} for answer in poll.answers]
+
+        content = {
+            "question": str(poll.question.text),
+            "options": [
+                {"text": str(o["text"].text), "voters": o["voters"]} for o in options
+            ],
+            "total_voters": results.total_voters if results else 0,
+            "is_quiz": poll.quiz,
+            "is_anonymous": not poll.public_voters,
+        }
+        return "poll", content, {}
 
     # --- Unified Link Detection ---
     urls = set()
@@ -208,7 +211,7 @@ async def extract_from_topic(entity, topic, last_msg_ids):
 
     if messages:
         full_title = f"{entity.title}_{topic_title}"
-        save_message_jsonl(full_title, topic_id, messages)
+        save_messages_to_db(full_title, topic_id, messages)
         last_msg_ids[last_id_key] = max_id
 
 
