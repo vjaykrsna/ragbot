@@ -85,7 +85,7 @@ This will process the raw data in the database and create the structured convers
 python -m src.scripts.process_data
 ```
 
-### 4. Run the Knowledge Synthesis Pipeline
+### 6. Run the Knowledge Synthesis Pipeline
 
 This will convert the processed conversations into a searchable knowledge base.
 
@@ -93,7 +93,7 @@ This will convert the processed conversations into a searchable knowledge base.
 python -m src.scripts.synthesize_knowledge
 ```
 
-### 5. Run the Telegram Bot
+### 7. Run the Telegram Bot
 
 This will start the Telegram bot, which will use the knowledge base to answer questions.
 
