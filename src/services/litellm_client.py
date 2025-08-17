@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from src.config.settings import load_settings
+from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ def complete(
     """Call litellm.completion with a few retries. Returns the raw response or None."""
     import litellm
 
-    settings = load_settings()
+    settings = get_settings()
 
     for attempt in range(max_retries):
         try:
@@ -49,7 +49,7 @@ def embed(texts: List[str], max_retries: int = 2) -> Optional[List[List[float]]]
     """Call litellm.embedding with retries. Returns list of vectors or None."""
     import litellm
 
-    settings = load_settings()
+    settings = get_settings()
 
     for attempt in range(max_retries):
         try:

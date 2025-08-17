@@ -11,7 +11,7 @@ import os
 
 import structlog
 
-from src.config.settings import AppSettings, load_settings
+from src.core.config import AppSettings, get_settings
 from src.core.logger import setup_logging
 from src.database import Database
 
@@ -42,7 +42,7 @@ class AppContext:
         """
         Creates a new instance of the application context.
         """
-        settings = load_settings()
+        settings = get_settings()
         return cls(settings)
 
 

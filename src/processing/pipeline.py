@@ -11,7 +11,7 @@ import os
 import re
 from typing import Any, Dict, List
 
-from src.config.settings import AppSettings
+from src.core.config import AppSettings
 from src.processing.anonymizer import Anonymizer
 from src.processing.conversation_builder import ConversationBuilder
 from src.processing.data_source import DataSource

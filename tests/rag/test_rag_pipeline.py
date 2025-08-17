@@ -1,20 +1,24 @@
+import shutil
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.config.settings import AppSettings
-from src.config.telegram import TelegramSettings
+from src.core.config import (
+    AppSettings,
+    ConversationSettings,
+    LiteLLMSettings,
+    PathSettings,
+    RAGSettings,
+    SynthesisSettings,
+    TelegramSettings,
+)
 from src.rag.rag_pipeline import RAGPipeline
 
 
 class TestRAGPipeline(unittest.TestCase):
     def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
         # Create a dummy AppSettings object for the test
-        from src.config.conversation import ConversationSettings
-        from src.config.litellm import LiteLLMSettings
-        from src.config.paths import PathSettings
-        from src.config.rag import RAGSettings
-        from src.config.synthesis import SynthesisSettings
-
         self.settings = AppSettings(
             telegram=TelegramSettings(
                 bot_token="fake_token",
@@ -24,7 +28,7 @@ class TestRAGPipeline(unittest.TestCase):
                 password=None,
             ),
             litellm=LiteLLMSettings(),
-            paths=PathSettings(),
+            paths=PathSettings(root_dir=self.test_dir),
             synthesis=SynthesisSettings(),
             rag=RAGSettings(),
             conversation=ConversationSettings(),
@@ -56,6 +60,9 @@ class TestRAGPipeline(unittest.TestCase):
         mock_completion_response.choices = [MagicMock()]
         mock_completion_response.choices[0].message.content = "Apples are red."
         self.mock_litellm_client.complete.return_value = mock_completion_response
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
 
     @patch("src.rag.rag_pipeline.chromadb.PersistentClient")
     @patch("src.rag.rag_pipeline.litellm_client")
