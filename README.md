@@ -100,3 +100,32 @@ This will start the Telegram bot, which will use the knowledge base to answer qu
 ```bash
 python -m src.bot.main
 ```
+
+## Managing Dependencies
+
+This project uses `pip-tools` to manage dependencies. This helps keep the project's dependencies predictable and easy to update.
+
+**Key Idea:** You only edit the `requirements.in` and `dev-requirements.in` files. The `requirements.txt` and `dev-requirements.txt` files are auto-generated.
+
+### To Add a New Package
+
+1.  Add the package name to `requirements.in` (for main dependencies) or `dev-requirements.in` (for development tools).
+2.  Run the following command to update the `.txt` files:
+    ```bash
+    .venv/bin/pip-compile
+    ```
+3.  Install the new dependencies:
+    ```bash
+    .venv/bin/pip-sync
+    ```
+
+### To Upgrade All Packages
+
+1.  Run the following command to find the latest compatible versions:
+    ```bash
+    .venv/bin/pip-compile --upgrade
+    ```
+2.  Sync your environment with the new versions:
+    ```bash
+    .venv/bin/pip-sync
+    ```

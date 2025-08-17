@@ -23,3 +23,13 @@ __pycache__/
 # Log files
 /logs/
 *.log
+
+# pip-tools cache
+.pip-tools/
+
+# Test and Linter Caches
+.pytest_cache/
+.ruff_cache/
+
+# Database files
+*.sqlite
