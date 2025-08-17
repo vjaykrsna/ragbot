@@ -21,6 +21,8 @@ class TestRAGPipeline(unittest.TestCase):
         # Create a dummy AppSettings object for the test
         self.settings = AppSettings(
             telegram=TelegramSettings(
+                api_id=12345,
+                api_hash="fake_hash",
                 bot_token="fake_token",
                 group_ids=[],
                 session_name="test_session",
@@ -28,7 +30,7 @@ class TestRAGPipeline(unittest.TestCase):
                 password=None,
             ),
             litellm=LiteLLMSettings(),
-            paths=PathSettings(root_dir=self.test_dir),
+            paths=PathSettings(),
             synthesis=SynthesisSettings(),
             rag=RAGSettings(),
             conversation=ConversationSettings(),

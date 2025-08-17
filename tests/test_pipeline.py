@@ -14,9 +14,10 @@ from src.core.config import (
     SynthesisSettings,
     TelegramSettings,
 )
+from src.core.database import Database
+from src.rag import mock_litellm_client
 from src.scripts.process_data import main as process_data_main
 from src.scripts.synthesize_knowledge import main as synthesize_main
-from src.services import mock_litellm_client
 
 
 class TestPipeline(unittest.TestCase):
@@ -31,10 +32,14 @@ class TestPipeline(unittest.TestCase):
         os.makedirs(self.knowledge_base_dir, exist_ok=True)
         os.makedirs(self.docs_dir, exist_ok=True)
 
-        from src.database import Database
+        # Patch get_project_root to use the temporary test directory for this test
+        self.mock_get_root = patch(
+            "src.core.config.get_project_root", return_value=self.test_dir
+        )
+        self.mock_get_root.start()
 
         # Create dummy raw data
-        self.db = Database(PathSettings(root_dir=self.test_dir))
+        self.db = Database(PathSettings())
         self.db.insert_messages(
             [
                 {
@@ -78,15 +83,18 @@ class TestPipeline(unittest.TestCase):
             f.write("This is a test prompt.")
 
     def tearDown(self):
+        self.mock_get_root.stop()
         shutil.rmtree(self.test_dir)
 
     @patch("src.scripts.synthesize_knowledge.litellm_client", new=mock_litellm_client)
     def test_full_pipeline(self):
         # Override path settings to use temporary directories
-        test_paths = PathSettings(root_dir=self.test_dir)
+        test_paths = PathSettings()
         test_settings = AppSettings(
             paths=test_paths,
             telegram=TelegramSettings(
+                api_id=12345,
+                api_hash="fake_hash",
                 bot_token="fake_token",
                 group_ids=[],
                 session_name="test_session",

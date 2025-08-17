@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timedelta
 
-from src.config.conversation import ConversationSettings
+from src.core.config import ConversationSettings
 from src.processing.conversation_builder import ConversationBuilder
 
 
