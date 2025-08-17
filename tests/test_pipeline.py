@@ -5,9 +5,15 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.config.paths import PathSettings
-from src.config.settings import AppSettings
-from src.config.telegram import TelegramSettings
+from src.core.config import (
+    AppSettings,
+    ConversationSettings,
+    LiteLLMSettings,
+    PathSettings,
+    RAGSettings,
+    SynthesisSettings,
+    TelegramSettings,
+)
 from src.scripts.process_data import main as process_data_main
 from src.scripts.synthesize_knowledge import main as synthesize_main
 from src.services import mock_litellm_client
@@ -78,11 +84,6 @@ class TestPipeline(unittest.TestCase):
     def test_full_pipeline(self):
         # Override path settings to use temporary directories
         test_paths = PathSettings(root_dir=self.test_dir)
-        from src.config.conversation import ConversationSettings
-        from src.config.litellm import LiteLLMSettings
-        from src.config.rag import RAGSettings
-        from src.config.synthesis import SynthesisSettings
-
         test_settings = AppSettings(
             paths=test_paths,
             telegram=TelegramSettings(
@@ -119,7 +120,9 @@ class TestPipeline(unittest.TestCase):
             print("Data processing pipeline finished.")
 
             # Check that processed file was created and contains data
-            processed_file = test_paths.processed_conversations_file
+            processed_file = os.path.join(
+                test_paths.processed_data_dir, test_paths.processed_conversations_file
+            )
             self.assertTrue(os.path.exists(processed_file))
             with open(processed_file, "r") as f:
                 processed_data = json.load(f)
@@ -134,7 +137,7 @@ class TestPipeline(unittest.TestCase):
 
             # Check that chromadb contains the synthesized knowledge
             collection = mock_app_context.db_client.get_collection(
-                "telegram_knowledge_base_v2"
+                test_settings.rag.collection_name
             )
             self.assertEqual(collection.count(), 1)
             print(f"ChromaDB contains {collection.count()} documents.")

@@ -5,7 +5,7 @@ import sys
 
 import structlog
 
-from src.config.settings import AppSettings
+from src.core.config import AppSettings
 
 
 def setup_logging(settings: AppSettings) -> None:

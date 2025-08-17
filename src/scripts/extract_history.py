@@ -6,7 +6,6 @@ import re
 from datetime import datetime
 
 import telethon
-from dotenv import load_dotenv
 from telethon.errors import FloodWaitError
 from telethon.sync import TelegramClient
 from telethon.tl.functions.channels import GetForumTopicsRequest
@@ -18,20 +17,11 @@ from src.core.app import initialize_app
 app_context = initialize_app()
 settings = app_context.settings
 
-# Load environment variables
-load_dotenv()
-api_id_env = os.getenv("API_ID")
-api_hash = os.getenv("API_HASH")
-if not api_id_env or not api_hash:
-    raise RuntimeError(
-        "API_ID and API_HASH must be set in the environment to run extraction."
-    )
-api_id = int(api_id_env)
-
 # Use project root to store session files so they are persistent across runs
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-session_path = os.path.join(project_root, settings.telegram.session_name)
-client = TelegramClient(session_path, api_id, api_hash)
+session_path = os.path.join(settings.paths.root_dir, settings.telegram.session_name)
+client = TelegramClient(
+    session_path, settings.telegram.api_id, settings.telegram.api_hash
+)
 
 os.makedirs(settings.paths.raw_data_dir, exist_ok=True)
 

@@ -33,8 +33,8 @@ from litellm import (
 from pyrate_limiter import Duration, Limiter, Rate
 from tqdm import tqdm
 
-from src.config.settings import AppSettings
 from src.core.app import initialize_app
+from src.core.config import AppSettings
 from src.database import Database
 from src.services import litellm_client
 
@@ -450,7 +450,9 @@ class KnowledgeSynthesizer:
                                 meta[key] = json.dumps(value[:10])
                             else:
                                 meta[key] = json.dumps(value)
-                    metadatas.append(meta)
+                    # ChromaDB cannot handle None values in metadata, so we filter them out.
+                    sanitized_meta = {k: v for k, v in meta.items() if v is not None}
+                    metadatas.append(sanitized_meta)
 
                 documents = [n["detailed_analysis"] for n in nuggets_with_embeddings]
 
