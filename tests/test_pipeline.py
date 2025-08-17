@@ -27,15 +27,47 @@ class TestPipeline(unittest.TestCase):
         os.makedirs(self.knowledge_base_dir, exist_ok=True)
         os.makedirs(self.docs_dir, exist_ok=True)
 
+        from src.core.app import AppContext
+        from src.database import Database
+
         # Create dummy raw data
-        self.raw_file = os.path.join(self.raw_data_dir, "data.jsonl")
-        with open(self.raw_file, "w") as f:
-            f.write(
-                '{"id": 1, "date": "2023-01-01T12:00:00", "sender_id": "user1", "content": "Hello world"}\n'
-            )
-            f.write(
-                '{"id": 2, "date": "2023-01-01T12:01:00", "sender_id": "user2", "content": "Hello back"}\n'
-            )
+        self.db = Database(PathSettings(root_dir=self.test_dir))
+        self.db.insert_messages(
+            [
+                {
+                    "id": 1,
+                    "date": "2023-01-01T12:00:00",
+                    "sender_id": "user1",
+                    "message_type": "text",
+                    "content": "Hello world",
+                    "extra_data": {},
+                    "reply_to_msg_id": None,
+                    "topic_id": 1,
+                    "topic_title": "Test Topic",
+                    "source_name": "Test Group",
+                    "source_group_id": 123,
+                    "source_topic_id": 1,
+                    "source_saved_file": None,
+                    "ingestion_timestamp": "2023-01-01T12:00:00",
+                },
+                {
+                    "id": 2,
+                    "date": "2023-01-01T12:01:00",
+                    "sender_id": "user2",
+                    "message_type": "text",
+                    "content": "Hello back",
+                    "extra_data": {},
+                    "reply_to_msg_id": None,
+                    "topic_id": 1,
+                    "topic_title": "Test Topic",
+                    "source_name": "Test Group",
+                    "source_group_id": 123,
+                    "source_topic_id": 1,
+                    "source_saved_file": None,
+                    "ingestion_timestamp": "2023-01-01T12:01:00",
+                },
+            ]
+        )
 
         # Create dummy prompt file
         self.prompt_file = os.path.join(self.docs_dir, "knowledge_synthesis_prompt.md")
@@ -48,18 +80,36 @@ class TestPipeline(unittest.TestCase):
     @patch("src.scripts.synthesize_knowledge.litellm_client", new=mock_litellm_client)
     def test_full_pipeline(self):
         # Override path settings to use temporary directories
-        test_paths = PathSettings(
-            root_dir=self.test_dir,
-            data_dir=os.path.join(self.test_dir, "data"),
-            docs_dir=self.docs_dir,
-            log_dir=os.path.join(self.test_dir, "logs"),
-        )
+        test_paths = PathSettings(root_dir=self.test_dir)
+        from src.config.conversation import ConversationSettings
+        from src.config.litellm import LiteLLMSettings
+        from src.config.rag import RAGSettings
+        from src.config.synthesis import SynthesisSettings
+
         test_settings = AppSettings(
             paths=test_paths,
-            telegram=TelegramSettings(bot_token="fake_token"),
+            telegram=TelegramSettings(
+                bot_token="fake_token",
+                group_ids=[],
+                session_name="test_session",
+                phone=None,
+                password=None,
+            ),
+            litellm=LiteLLMSettings(),
+            synthesis=SynthesisSettings(),
+            rag=RAGSettings(),
+            conversation=ConversationSettings(),
+            console_log_level="INFO",
         )
 
-        with patch("src.core.app.load_settings", return_value=test_settings):
+        from src.core.app import AppContext
+
+        mock_app_context = AppContext(test_settings)
+        mock_app_context.db = self.db
+
+        with patch("src.scripts.process_data.initialize_app", return_value=mock_app_context), patch(
+            "src.scripts.synthesize_knowledge.initialize_app", return_value=mock_app_context
+        ):
             # 1. Run data processing pipeline
             print("Running data processing pipeline...")
             process_data_main()
@@ -80,8 +130,9 @@ class TestPipeline(unittest.TestCase):
             print("Knowledge synthesis pipeline finished.")
 
             # Check that chromadb contains the synthesized knowledge
-            client = chromadb.PersistentClient(path=test_paths.db_path)
-            collection = client.get_collection("telegram_knowledge_base_v2")
+            collection = mock_app_context.db_client.get_collection(
+                "telegram_knowledge_base_v2"
+            )
             self.assertEqual(collection.count(), 1)
             print(f"ChromaDB contains {collection.count()} documents.")
 

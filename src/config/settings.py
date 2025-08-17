@@ -6,8 +6,10 @@ variables and .env files. It provides a hierarchical structure for settings,
 making them easier to manage and use throughout the application.
 """
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
+from dataclasses import dataclass
+
+from dotenv import load_dotenv
 
 from .conversation import ConversationSettings
 from .litellm import LiteLLMSettings
@@ -17,22 +19,41 @@ from .synthesis import SynthesisSettings
 from .telegram import TelegramSettings
 
 
-class AppSettings(BaseSettings):
+@dataclass
+class AppSettings:
     """Root settings object for the application."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
-
-    telegram: TelegramSettings = Field(default_factory=TelegramSettings)
-    litellm: LiteLLMSettings = Field(default_factory=LiteLLMSettings)
-    paths: PathSettings = Field(default_factory=PathSettings)
-    synthesis: SynthesisSettings = Field(default_factory=SynthesisSettings)
-    rag: RAGSettings = Field(default_factory=RAGSettings)
-    conversation: ConversationSettings = Field(default_factory=ConversationSettings)
-    console_log_level: str = Field("INFO", env="CHATBOT_CONSOLE_LEVEL")
+    telegram: TelegramSettings
+    litellm: LiteLLMSettings
+    paths: PathSettings
+    synthesis: SynthesisSettings
+    rag: RAGSettings
+    conversation: ConversationSettings
+    console_log_level: str
 
 
 def load_settings() -> AppSettings:
     """Loads and returns the application settings."""
-    return AppSettings()
+    load_dotenv()
+
+    group_ids_str = os.getenv("TELEGRAM__GROUP_IDS", "")
+    if group_ids_str:
+        group_ids = [int(gid.strip()) for gid in group_ids_str.split(",")]
+    else:
+        group_ids = []
+
+    return AppSettings(
+        telegram=TelegramSettings(
+            bot_token=os.getenv("TELEGRAM__BOT_TOKEN"),
+            group_ids=group_ids,
+            session_name=os.getenv("TELEGRAM__SESSION_NAME", "ragbot_session"),
+            phone=os.getenv("TELEGRAM__PHONE"),
+            password=os.getenv("TELEGRAM__PASSWORD"),
+        ),
+        litellm=LiteLLMSettings(),
+        paths=PathSettings(),
+        synthesis=SynthesisSettings(),
+        rag=RAGSettings(),
+        conversation=ConversationSettings(),
+        console_log_level=os.getenv("CHATBOT_CONSOLE_LEVEL", "INFO"),
+    )

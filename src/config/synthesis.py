@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class SynthesisSettings(BaseModel):
+@dataclass
+class SynthesisSettings:
     """Settings for the knowledge synthesis process."""
 
-    max_workers: int = Field(5, env="MAX_WORKERS")
-    requests_per_minute: int = Field(90, env="REQUESTS_PER_MINUTE")
-    batch_size: int = Field(2, env="BATCH_SIZE")
+    max_workers: int = 5
+    requests_per_minute: int = 90
+    batch_size: int = 2

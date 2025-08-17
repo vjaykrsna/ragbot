@@ -52,8 +52,10 @@ class DataProcessingPipeline:
         self.logger.info("🚀 Starting Phase 2: Streaming Data Processing & KB Creation")
 
         # The main processing stream
+        # The sorter now reads from the data_source (the database)
+        sorted_stream = self.sorter.sort(self.data_source)
         processed_stream = (
-            self._process_record(rec, self.anonymizer) for rec in self.sorter
+            self._process_record(rec, self.anonymizer) for rec in sorted_stream
         )
         conversation_stream = self.conv_builder.process_stream(processed_stream)
 

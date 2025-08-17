@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class ConversationSettings(BaseModel):
+@dataclass
+class ConversationSettings:
     """Settings for conversation grouping."""
 
-    time_threshold_seconds: int = Field(300, env="CONVERSATION_TIME_THRESHOLD_SECONDS")
-    session_window_seconds: int = Field(3600, env="SESSION_WINDOW_SECONDS")
+    time_threshold_seconds: int = 300
+    session_window_seconds: int = 3600
