@@ -68,6 +68,7 @@ def test_main_delete(mock_input, mock_delete, mock_parse_args):
         inspect_db.delete_collection("test_collection")
         mock_delete.assert_called_with("test_collection")
 
+
 @patch("argparse.ArgumentParser.parse_args")
 @patch("src.scripts.inspect_db.inspect_database")
 def test_main_inspect(mock_inspect, mock_parse_args):

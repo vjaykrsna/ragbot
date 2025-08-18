@@ -11,9 +11,7 @@ class TestNuggetGenerator(unittest.TestCase):
     def setUp(self):
         self.mock_settings = MagicMock()
         self.mock_limiter = MagicMock(spec=Limiter)
-        self.nugget_generator = NuggetGenerator(
-            self.mock_settings, self.mock_limiter
-        )
+        self.nugget_generator = NuggetGenerator(self.mock_settings, self.mock_limiter)
 
     @patch("src.synthesis.nugget_generator.litellm_client")
     def test_generate_nuggets_happy_path(self, mock_litellm_client):

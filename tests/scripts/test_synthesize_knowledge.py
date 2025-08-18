@@ -65,7 +65,9 @@ class TestKnowledgeSynthesizer(unittest.TestCase):
         )
         self.assertEqual(collection, mock_collection)
 
-    @patch("src.scripts.synthesize_knowledge.KnowledgeSynthesizer._process_conversation_batch")
+    @patch(
+        "src.scripts.synthesize_knowledge.KnowledgeSynthesizer._process_conversation_batch"
+    )
     def test_synthesize_and_populate(self, mock_process_batch):
         """Test the synthesis and population process."""
         # Arrange
@@ -86,7 +88,9 @@ class TestKnowledgeSynthesizer(unittest.TestCase):
         self.mock_progress_tracker.save_progress.assert_called()
         self.mock_progress_tracker.save_processed_hashes.assert_called()
 
-    @patch("src.scripts.synthesize_knowledge.KnowledgeSynthesizer._run_numeric_verifier")
+    @patch(
+        "src.scripts.synthesize_knowledge.KnowledgeSynthesizer._run_numeric_verifier"
+    )
     def test_process_conversation_batch(self, mock_run_verifier):
         """Test the processing of a single batch of conversations."""
         # Arrange
@@ -102,9 +106,7 @@ class TestKnowledgeSynthesizer(unittest.TestCase):
         collection = "collection"
 
         # Act
-        result = self.synthesizer._process_conversation_batch(
-            batch, prompt, collection
-        )
+        result = self.synthesizer._process_conversation_batch(batch, prompt, collection)
 
         # Assert
         self.assertEqual(result, 1)

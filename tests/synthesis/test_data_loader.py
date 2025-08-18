@@ -21,9 +21,7 @@ class TestDataLoader(unittest.TestCase):
         with patch("builtins.open", m_open):
             result = self.data_loader.load_processed_data()
             self.assertEqual(result, mock_data)
-            m_open.assert_called_once_with(
-                "/fake/convos.json", "r", encoding="utf-8"
-            )
+            m_open.assert_called_once_with("/fake/convos.json", "r", encoding="utf-8")
 
     def test_load_processed_data_file_not_found(self):
         """

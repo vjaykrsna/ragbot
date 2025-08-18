@@ -16,8 +16,6 @@ class TestFailedBatchHandler(unittest.TestCase):
         with patch("builtins.open", m_open), patch(
             "src.synthesis.failed_batch_handler.os.makedirs"
         ):
-            self.failed_batch_handler.save_failed_batch(
-                ["conv1"], "error", "response"
-            )
+            self.failed_batch_handler.save_failed_batch(["conv1"], "error", "response")
             handle = m_open()
             handle.write.assert_called()

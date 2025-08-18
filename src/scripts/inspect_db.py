@@ -9,6 +9,7 @@ from rich.text import Text
 
 from src.core.app import initialize_app
 
+
 def get_app_context():
     """Initializes and returns the application context."""
     return initialize_app()
