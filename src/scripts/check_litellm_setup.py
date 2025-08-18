@@ -14,7 +14,6 @@ import yaml
 from src.core.app import initialize_app
 
 # Initialize the application context
-initialize_app()
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +47,7 @@ def check_redis_connection(host: str, port: int, timeout: float = 2.0) -> bool:
 
 
 def main():
+    initialize_app()
     proxy = os.getenv("LITELLM_PROXY_URL")
     yaml_path = os.path.join(
         os.path.dirname(__file__), "..", "utils", "litellm_config.yaml"

@@ -18,14 +18,15 @@ from src.core.logger import setup_logging
 _logger = structlog.get_logger(__name__)
 
 
+import chromadb
+
+
 class AppContext:
     """
     Centralized application context.
     """
 
     def __init__(self, settings: AppSettings):
-        import chromadb
-
         self.settings = settings
         setup_logging(self.settings)
         self.db = Database(self.settings.paths)

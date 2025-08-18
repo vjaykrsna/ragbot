@@ -9,15 +9,14 @@ from rich.text import Text
 
 from src.core.app import initialize_app
 
-# Initialize the application context
-app_context = initialize_app()
-settings = app_context.settings
-
-console = Console()
+def get_app_context():
+    """Initializes and returns the application context."""
+    return initialize_app()
 
 
 def display_nugget_details(nuggets: Dict[str, Any]):
     """Displays the details of the most recent nuggets in a rich table."""
+    console = Console()
     if not nuggets or not nuggets.get("metadatas"):
         console.print(Panel("No nuggets found to display.", style="yellow"))
         return
@@ -56,6 +55,9 @@ def inspect_database(limit: int):
     """
     Connects to the ChromaDB and provides a detailed overview of its contents.
     """
+    console = Console()
+    app_context = get_app_context()
+    settings = app_context.settings
     try:
         console.print(
             Panel(
@@ -64,7 +66,7 @@ def inspect_database(limit: int):
                 expand=False,
             )
         )
-        client = chromadb.PersistentClient(path=settings.paths.db_path)
+        client = chromadb.PersistentClient(path=str(settings.paths.db_path))
 
         try:
             collection = client.get_collection(name=settings.rag.collection_name)
@@ -97,11 +99,14 @@ def inspect_database(limit: int):
 
 def delete_collection(collection_name: str):
     """Deletes a specific collection from the database."""
+    console = Console()
+    app_context = get_app_context()
+    settings = app_context.settings
     try:
         console.print(
             f"Connecting to database at path: [cyan]{settings.paths.db_path}[/]"
         )
-        client = chromadb.PersistentClient(path=settings.paths.db_path)
+        client = chromadb.PersistentClient(path=str(settings.paths.db_path))
 
         console.print(
             f"--- Deleting Collection: '{collection_name}' ---", style="bold yellow"
@@ -150,6 +155,6 @@ if __name__ == "__main__":
         if response.lower() == "y":
             delete_collection(args.delete)
         else:
-            console.print("Deletion cancelled.", style="yellow")
+            Console().print("Deletion cancelled.", style="yellow")
     else:
         inspect_database(args.limit)
