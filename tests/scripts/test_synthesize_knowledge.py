@@ -1,275 +1,188 @@
-import json
 import unittest
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
-from src.scripts.synthesize_knowledge import KnowledgeSynthesizer
+from src.scripts.synthesize_knowledge import KnowledgeSynthesizer, main
 
 
 class TestKnowledgeSynthesizer(unittest.TestCase):
     def setUp(self):
         self.mock_settings = MagicMock()
-        self.mock_settings.paths.processed_data_dir = "/fake/processed"
-        self.mock_settings.paths.processed_conversations_file = "convos.json"
-        self.mock_settings.paths.prompt_file = "/fake/prompt.md"
-        self.mock_settings.synthesis.requests_per_minute = 10
-
         self.mock_db = MagicMock()
         self.mock_db_client = MagicMock()
+        self.mock_data_loader = MagicMock()
+        self.mock_nugget_generator = MagicMock()
+        self.mock_nugget_embedder = MagicMock()
+        self.mock_nugget_store = MagicMock()
+        self.mock_progress_tracker = MagicMock()
+        self.mock_failed_batch_handler = MagicMock()
 
         self.synthesizer = KnowledgeSynthesizer(
-            settings=self.mock_settings, db=self.mock_db, db_client=self.mock_db_client
+            self.mock_settings,
+            self.mock_db,
+            self.mock_db_client,
+            self.mock_data_loader,
+            self.mock_nugget_generator,
+            self.mock_nugget_embedder,
+            self.mock_nugget_store,
+            self.mock_progress_tracker,
+            self.mock_failed_batch_handler,
         )
 
-    def test_load_processed_data_success(self):
-        """
-        Test successfully loading conversation data from a JSON file.
-        """
-        mock_data = [{"id": 1, "conversation": "hello"}]
-        m_open = mock_open(read_data=json.dumps(mock_data))
-        with patch("builtins.open", m_open):
-            result = self.synthesizer._load_processed_data()
-            self.assertEqual(result, mock_data)
-            m_open.assert_called_once_with(
-                "/fake/processed/convos.json", "r", encoding="utf-8"
-            )
-
-    def test_load_processed_data_file_not_found(self):
-        """
-        Test handling of a missing conversation file.
-        """
-        m_open = mock_open()
-        m_open.side_effect = FileNotFoundError
-        with patch("builtins.open", m_open):
-            result = self.synthesizer._load_processed_data()
-            self.assertEqual(result, [])
-
-    def test_load_processed_data_json_decode_error(self):
-        """
-        Test handling of a corrupted/empty conversation file.
-        """
-        m_open = mock_open(read_data="not json")
-        with patch("builtins.open", m_open):
-            result = self.synthesizer._load_processed_data()
-            self.assertEqual(result, [])
-
-    def test_load_prompt_template_success(self):
-        """
-        Test successfully loading the prompt template.
-        """
-        prompt_content = "This is the prompt."
-        m_open = mock_open(read_data=prompt_content)
-        with patch("builtins.open", m_open):
-            result = self.synthesizer._load_prompt_template()
-            self.assertEqual(result, prompt_content)
-            m_open.assert_called_once_with("/fake/prompt.md", "r", encoding="utf-8")
-
-    def test_load_prompt_template_file_not_found(self):
-        """
-        Test handling of a missing prompt file.
-        """
-        m_open = mock_open()
-        m_open.side_effect = FileNotFoundError
-        with patch("builtins.open", m_open):
-            result = self.synthesizer._load_prompt_template()
-            self.assertIsNone(result)
-
-    @patch("src.scripts.synthesize_knowledge.litellm_client")
-    def test_generate_nuggets_happy_path(self, mock_litellm_client):
-        """
-        Test the happy path for generating knowledge nuggets from a conversation batch.
-        """
+    @patch("src.scripts.synthesize_knowledge.KnowledgeSynthesizer._setup_database")
+    @patch(
+        "src.scripts.synthesize_knowledge.KnowledgeSynthesizer._synthesize_and_populate"
+    )
+    def test_run(self, mock_populate, mock_setup_db):
+        """Test the main run method of the synthesizer."""
         # Arrange
-        mock_nugget = {
-            "topic": "Test",
-            "timestamp": "2023-01-01T00:00:00Z",
-            "topic_summary": "Summary",
-            "detailed_analysis": "Analysis",
-            "status": "Complete",
-            "keywords": [],
-            "source_message_ids": [1],
-            "user_ids_involved": ["u1"],
-        }
-        mock_response = MagicMock()
-        mock_response.choices[
-            0
-        ].message.content = f"```json\n[{json.dumps(mock_nugget)}]\n```"
-        mock_litellm_client.complete.return_value = mock_response
-
-        conv_batch = [{"conversation": [{"id": 1, "content": "Hello"}]}]
-        prompt = "test prompt"
+        mock_setup_db.return_value = "mock_collection"
+        self.mock_data_loader.load_processed_data.return_value = ["mock_conversation"]
+        self.mock_data_loader.load_prompt_template.return_value = "mock_prompt"
 
         # Act
-        result = self.synthesizer._generate_nuggets_batch(conv_batch, prompt)
+        self.synthesizer.run()
 
         # Assert
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["topic"], "Test")
-        mock_litellm_client.complete.assert_called_once()
-
-    @patch("src.scripts.synthesize_knowledge.litellm_client")
-    def test_generate_nuggets_llm_returns_malformed_json(self, mock_litellm_client):
-        """
-        Test that a malformed JSON response from the LLM is handled correctly.
-        """
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.choices[0].message.content = "This is not json"
-        mock_litellm_client.complete.return_value = mock_response
-
-        conv_batch = [{"conversation": [{"id": 1, "content": "Hello"}]}]
-        prompt = "test prompt"
-
-        with patch.object(self.synthesizer, "_save_failed_batch") as mock_save_failed:
-            # Act
-            result = self.synthesizer._generate_nuggets_batch(conv_batch, prompt)
-
-            # Assert
-            self.assertEqual(result, [])
-            mock_save_failed.assert_called_once()
-
-    @patch("src.scripts.synthesize_knowledge.litellm_client")
-    def test_generate_nuggets_llm_returns_not_a_list(self, mock_litellm_client):
-        """
-        Test that a valid JSON response that is not a list is handled.
-        """
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.choices[0].message.content = '{"key": "value"}'
-        mock_litellm_client.complete.return_value = mock_response
-
-        conv_batch = [{"conversation": [{"id": 1, "content": "Hello"}]}]
-        prompt = "test prompt"
-
-        with patch.object(self.synthesizer, "_save_failed_batch") as mock_save_failed:
-            # Act
-            result = self.synthesizer._generate_nuggets_batch(conv_batch, prompt)
-
-            # Assert
-            self.assertEqual(result, [])
-            mock_save_failed.assert_called_once()
-
-    @patch("src.scripts.synthesize_knowledge.litellm_client")
-    def test_generate_nuggets_llm_returns_invalid_structure(self, mock_litellm_client):
-        """
-        Test that nuggets with missing required keys are filtered out.
-        """
-        # Arrange
-        invalid_nugget = {"topic": "Test"}  # Missing other keys
-        valid_nugget = {
-            "topic": "Test2",
-            "timestamp": "2023-01-01T00:00:00Z",
-            "topic_summary": "Summary",
-            "detailed_analysis": "Analysis",
-            "status": "Complete",
-            "keywords": [],
-            "source_message_ids": [1],
-            "user_ids_involved": ["u1"],
-        }
-        mock_response = MagicMock()
-        mock_response.choices[
-            0
-        ].message.content = (
-            f"[{json.dumps(invalid_nugget)}, {json.dumps(valid_nugget)}]"
-        )
-        mock_litellm_client.complete.return_value = mock_response
-
-        conv_batch = [{"conversation": [{"id": 1, "content": "Hello"}]}]
-        prompt = "test prompt"
-
-        with patch.object(self.synthesizer, "_save_failed_batch") as mock_save_failed:
-            # Act
-            result = self.synthesizer._generate_nuggets_batch(conv_batch, prompt)
-
-            # Assert
-            self.assertEqual(len(result), 1)
-            self.assertEqual(result[0]["topic"], "Test2")
-            mock_save_failed.assert_called_once()
-
-    @patch("src.scripts.synthesize_knowledge.litellm_client")
-    def test_embed_nuggets_happy_path(self, mock_litellm_client):
-        """
-        Test the happy path for embedding a batch of nuggets.
-        """
-        # Arrange
-        nuggets = [
-            {"detailed_analysis": "analysis 1"},
-            {"detailed_analysis": "analysis 2"},
-        ]
-        mock_embeddings = [[0.1], [0.2]]
-        mock_litellm_client.embed.return_value = mock_embeddings
-
-        # Act
-        result = self.synthesizer._embed_nuggets_batch(nuggets)
-
-        # Assert
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]["embedding"], [0.1])
-        self.assertEqual(result[1]["embedding"], [0.2])
-        mock_litellm_client.embed.assert_called_once_with(
-            ["analysis 1", "analysis 2"], max_retries=1
+        mock_setup_db.assert_called_once()
+        self.mock_data_loader.load_processed_data.assert_called_once()
+        self.mock_data_loader.load_prompt_template.assert_called_once()
+        mock_populate.assert_called_once_with(
+            ["mock_conversation"], "mock_prompt", "mock_collection"
         )
 
-    @patch("src.scripts.synthesize_knowledge.litellm_client")
-    def test_embed_nuggets_api_error(self, mock_litellm_client):
-        """
-        Test that an APIError is raised after retries if embedding fails.
-        """
-        # Arrange
-        nuggets = [{"detailed_analysis": "analysis 1"}]
-        mock_litellm_client.embed.return_value = None  # Simulate failure
-
-        # Act & Assert
-        with self.assertRaises(
-            Exception
-        ):  # The decorator re-raises APIError as a generic Exception
-            self.synthesizer._embed_nuggets_batch(nuggets)
-
-        # 2 attempts are hardcoded in the method
-        self.assertEqual(mock_litellm_client.embed.call_count, 2)
-
-    def test_store_nuggets_happy_path(self):
-        """
-        Test the happy path for storing a batch of nuggets in ChromaDB.
-        """
+    def test_setup_database(self):
+        """Test the database setup method."""
         # Arrange
         mock_collection = MagicMock()
+        self.mock_db_client.get_or_create_collection.return_value = mock_collection
+
+        # Act
+        collection = self.synthesizer._setup_database()
+
+        # Assert
+        self.mock_db_client.get_or_create_collection.assert_called_once_with(
+            name=self.mock_settings.rag.collection_name
+        )
+        self.assertEqual(collection, mock_collection)
+
+    @patch("src.scripts.synthesize_knowledge.KnowledgeSynthesizer._process_conversation_batch")
+    def test_synthesize_and_populate(self, mock_process_batch):
+        """Test the synthesis and population process."""
+        # Arrange
+        self.mock_settings.synthesis.max_workers = 1
+        self.mock_progress_tracker.load_progress.return_value = -1
+        self.mock_progress_tracker.load_processed_hashes.return_value = set()
+        mock_process_batch.return_value = 1
+
+        conversations = [{"id": 1}, {"id": 2}]
+        prompt = "prompt"
+        collection = "collection"
+
+        # Act
+        self.synthesizer._synthesize_and_populate(conversations, prompt, collection)
+
+        # Assert
+        self.assertEqual(mock_process_batch.call_count, 2)
+        self.mock_progress_tracker.save_progress.assert_called()
+        self.mock_progress_tracker.save_processed_hashes.assert_called()
+
+    @patch("src.scripts.synthesize_knowledge.KnowledgeSynthesizer._run_numeric_verifier")
+    def test_process_conversation_batch(self, mock_run_verifier):
+        """Test the processing of a single batch of conversations."""
+        # Arrange
+        self.mock_nugget_generator.generate_nuggets_batch.return_value = ["nugget1"]
+        self.mock_nugget_embedder.embed_nuggets_batch.return_value = [
+            "nugget_with_embedding"
+        ]
+        mock_run_verifier.return_value = ["verified_nugget"]
+        self.mock_nugget_store.store_nuggets_batch.return_value = 1
+
+        batch = ["conversation"]
+        prompt = "prompt"
+        collection = "collection"
+
+        # Act
+        result = self.synthesizer._process_conversation_batch(
+            batch, prompt, collection
+        )
+
+        # Assert
+        self.assertEqual(result, 1)
+        self.mock_nugget_generator.generate_nuggets_batch.assert_called_once_with(
+            batch, prompt
+        )
+        self.mock_nugget_embedder.embed_nuggets_batch.assert_called_once_with(
+            ["nugget1"]
+        )
+        mock_run_verifier.assert_called_once_with(["nugget_with_embedding"], batch)
+        self.mock_nugget_store.store_nuggets_batch.assert_called_once_with(
+            collection, ["verified_nugget"]
+        )
+
+    def test_run_numeric_verifier(self):
+        """Test the numeric verifier."""
+        # Arrange
         nuggets = [
+            {"normalized_values": [{"value": 100}]},
+            {"normalized_values": [{"value": 200}]},
+            {"normalized_values": [{"value": 300}]},
+        ]
+        conversations = [
             {
-                "detailed_analysis": "analysis 1",
-                "embedding": [0.1],
-                "some_list": [1, 2],
-                "none_value": None,
+                "messages": [
+                    {"normalized_values": [{"value": 100}]},
+                    {"normalized_values": [{"value": 300}]},
+                ]
             }
         ]
 
         # Act
-        num_stored = self.synthesizer._store_nuggets_batch(mock_collection, nuggets)
+        result = self.synthesizer._run_numeric_verifier(nuggets, conversations)
 
         # Assert
-        self.assertEqual(num_stored, 1)
-        mock_collection.add.assert_called_once()
+        self.assertFalse(result[0]["verification_numeric_mismatch"])
+        self.assertTrue(result[1]["verification_numeric_mismatch"])
+        self.assertFalse(result[2]["verification_numeric_mismatch"])
 
-        # Check that metadata was sanitized correctly
-        call_args = mock_collection.add.call_args
-        metadatas = call_args.kwargs["metadatas"]
-        self.assertEqual(len(metadatas), 1)
-        self.assertNotIn("embedding", metadatas[0])
-        self.assertNotIn("none_value", metadatas[0])
-        self.assertEqual(
-            metadatas[0]["some_list"], "[1, 2]"
-        )  # Check list serialization
+    def test_batch_hash(self):
+        """Test the batch hashing function."""
+        batch = [{"ingestion_hash": "hash1"}, {"ingestion_hash": "hash2"}]
+        h = self.synthesizer._batch_hash(batch)
+        self.assertIsInstance(h, str)
+        self.assertGreater(len(h), 0)
 
-    def test_store_nuggets_chroma_error(self):
-        """
-        Test that ChromaDB errors are handled gracefully.
-        """
-        # Arrange
-        mock_collection = MagicMock()
-        mock_collection.add.side_effect = ValueError("DB error")
-        nuggets = [{"detailed_analysis": "analysis 1", "embedding": [0.1]}]
 
-        # Act
-        num_stored = self.synthesizer._store_nuggets_batch(mock_collection, nuggets)
+@patch("src.scripts.synthesize_knowledge.initialize_app")
+@patch("src.scripts.synthesize_knowledge.KnowledgeSynthesizer")
+@patch("src.scripts.synthesize_knowledge.DataLoader")
+@patch("src.scripts.synthesize_knowledge.Limiter")
+@patch("src.scripts.synthesize_knowledge.NuggetGenerator")
+@patch("src.scripts.synthesize_knowledge.NuggetEmbedder")
+@patch("src.scripts.synthesize_knowledge.NuggetStore")
+@patch("src.scripts.synthesize_knowledge.ProgressTracker")
+@patch("src.scripts.synthesize_knowledge.FailedBatchHandler")
+def test_main(
+    mock_failed_batch_handler,
+    mock_progress_tracker,
+    mock_nugget_store,
+    mock_nugget_embedder,
+    mock_nugget_generator,
+    mock_limiter,
+    mock_data_loader,
+    mock_synthesizer,
+    mock_initialize_app,
+):
+    """Test the main function."""
+    # Arrange
+    mock_context = MagicMock()
+    mock_initialize_app.return_value = mock_context
+    mock_synthesizer_instance = MagicMock()
+    mock_synthesizer.return_value = mock_synthesizer_instance
 
-        # Assert
-        self.assertEqual(num_stored, 0)
+    # Act
+    main()
+
+    # Assert
+    mock_initialize_app.assert_called_once()
+    mock_synthesizer.assert_called_once()
+    mock_synthesizer_instance.run.assert_called_once()
