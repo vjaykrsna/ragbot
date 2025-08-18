@@ -1,34 +1,19 @@
 import concurrent.futures
 import hashlib
-import json
 import logging
-import os
-import re
 import threading
-import time
-import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
-from functools import wraps
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List
 
 import chromadb
 import chromadb.errors
 from chromadb.api.models.Collection import Collection
-from litellm import (
-    APIConnectionError,
-    APIError,
-    RateLimitError,
-    ServiceUnavailableError,
-    Timeout,
-)
 from pyrate_limiter import Duration, Limiter, Rate
 from tqdm import tqdm
 
 from src.core.app import initialize_app
 from src.core.config import AppSettings
 from src.core.database import Database
-from src.rag import litellm_client
 from src.synthesis.data_loader import DataLoader
 from src.synthesis.failed_batch_handler import FailedBatchHandler
 from src.synthesis.nugget_embedder import NuggetEmbedder
@@ -41,8 +26,6 @@ logger = logging.getLogger(__name__)
 # Thread-safe locks
 chroma_lock = threading.Lock()
 fail_file_lock = threading.Lock()
-
-
 
 
 class KnowledgeSynthesizer:
@@ -188,9 +171,7 @@ class KnowledgeSynthesizer:
         self, batch: List[Dict[str, Any]], prompt_template: str, collection: Collection
     ) -> int:
         """Worker function to process a batch of conversations."""
-        nuggets = self.nugget_generator.generate_nuggets_batch(
-            batch, prompt_template
-        )
+        nuggets = self.nugget_generator.generate_nuggets_batch(batch, prompt_template)
         if not nuggets:
             return 0
 

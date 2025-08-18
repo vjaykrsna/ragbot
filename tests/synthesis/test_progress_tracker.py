@@ -28,9 +28,7 @@ class TestProgressTracker(unittest.TestCase):
             written_content = "".join(
                 call.args[0] for call in handle.write.call_args_list
             )
-            self.assertEqual(
-                json.loads(written_content), {"last_processed_index": 456}
-            )
+            self.assertEqual(json.loads(written_content), {"last_processed_index": 456})
 
     @patch("os.path.exists", return_value=True)
     def test_load_processed_hashes(self, mock_exists):

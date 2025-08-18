@@ -9,6 +9,7 @@ configured application environment.
 
 import os
 
+import chromadb
 import structlog
 
 from src.core.config import AppSettings, get_settings
@@ -16,9 +17,6 @@ from src.core.database import Database
 from src.core.logger import setup_logging
 
 _logger = structlog.get_logger(__name__)
-
-
-import chromadb
 
 
 class AppContext:

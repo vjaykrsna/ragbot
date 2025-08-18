@@ -1,9 +1,6 @@
 import os
 import socket
-from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
-import yaml
+from unittest.mock import mock_open, patch
 
 from src.scripts.check_litellm_setup import (
     check_redis_connection,
@@ -72,9 +69,7 @@ def test_check_redis_connection_failure(mock_socket):
         "REDIS_PORT": "6379",
     },
 )
-def test_main_with_redis(
-    mock_check_redis, mock_parse_yaml, mock_initialize_app
-):
+def test_main_with_redis(mock_check_redis, mock_parse_yaml, mock_initialize_app):
     """Test the main function with Redis configured."""
     yaml_config = {
         "model_list": [
@@ -94,9 +89,7 @@ def test_main_with_redis(
     mock_parse_yaml.return_value = yaml_config
     mock_check_redis.return_value = True
 
-    with patch("logging.Logger.info") as mock_log_info, patch(
-        "logging.Logger.warning"
-    ) as mock_log_warning:
+    with patch("logging.Logger.warning") as mock_log_warning:
         main()
         mock_parse_yaml.assert_called_once()
         mock_check_redis.assert_called_once_with("localhost", 6379)
@@ -107,9 +100,7 @@ def test_main_with_redis(
 @patch("src.scripts.check_litellm_setup.parse_litellm_yaml")
 @patch("src.scripts.check_litellm_setup.check_redis_connection")
 @patch.dict(os.environ, {}, clear=True)
-def test_main_no_redis(
-    mock_check_redis, mock_parse_yaml, mock_initialize_app
-):
+def test_main_no_redis(mock_check_redis, mock_parse_yaml, mock_initialize_app):
     """Test the main function without Redis configured."""
     yaml_config = {
         "model_list": [

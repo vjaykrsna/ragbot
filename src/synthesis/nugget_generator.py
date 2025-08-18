@@ -5,13 +5,6 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from litellm import (
-    APIConnectionError,
-    APIError,
-    RateLimitError,
-    ServiceUnavailableError,
-    Timeout,
-)
 from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
