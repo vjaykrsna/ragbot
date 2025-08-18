@@ -9,6 +9,7 @@ configured application environment.
 
 import os
 
+import chromadb
 import structlog
 
 from src.core.config import AppSettings, get_settings
@@ -24,8 +25,6 @@ class AppContext:
     """
 
     def __init__(self, settings: AppSettings):
-        import chromadb
-
         self.settings = settings
         setup_logging(self.settings)
         self.db = Database(self.settings.paths)

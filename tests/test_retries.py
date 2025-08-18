@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from litellm import RateLimitError
 
-from src.scripts.synthesize_knowledge import retry_with_backoff
+from src.synthesis.decorators import retry_with_backoff
 
 
 class TestRetryDecorator(unittest.TestCase):
