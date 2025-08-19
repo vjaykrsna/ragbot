@@ -1,6 +1,6 @@
 # Modular RAG Telegram Bot
 
-[![Python CI](https://github.com/your-username/your-repo/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/your-repo/actions/workflows/ci.yml)
+[![Python CI](https://github.com/vjaykrsna/ragbot/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/your-repo/actions/workflows/ci.yml)
 
 This project is a RAG-powered Telegram bot that can answer questions about your chat history. It has been refactored for modularity, maintainability, and scalability, following modern Python best practices.
 
