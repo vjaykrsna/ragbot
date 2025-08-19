@@ -16,6 +16,9 @@ fail_file_lock = threading.Lock()
 class FailedBatchHandler:
     """
     Handles the saving of failed batches.
+
+    Args:
+        settings: The application settings.
     """
 
     def __init__(self, settings: AppSettings):
@@ -24,6 +27,14 @@ class FailedBatchHandler:
     def save_failed_batch(
         self, conv_batch: List[Dict[str, Any]], error: str, response_text: str = ""
     ) -> None:
+        """
+        Saves a failed batch to a file.
+
+        Args:
+            conv_batch: The batch of conversations that failed.
+            error: The error message.
+            response_text: The response text from the LLM.
+        """
         with fail_file_lock:
             os.makedirs(
                 os.path.dirname(self.settings.paths.failed_batches_file), exist_ok=True

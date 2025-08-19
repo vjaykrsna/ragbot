@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 class NuggetGenerator:
     """
     Handles the generation of knowledge nuggets from conversations.
+
+    Args:
+        settings: The application settings.
+        limiter: The rate limiter.
     """
 
     def __init__(self, settings: AppSettings, limiter: Limiter):
@@ -27,6 +31,17 @@ class NuggetGenerator:
     def generate_nuggets_batch(
         self, conv_batch: List[Dict[str, Any]], prompt_template: str
     ) -> List[Dict[str, Any]]:
+        """
+        Generates a batch of knowledge nuggets from a batch of conversations.
+
+        Args:
+            conv_batch: A list of conversations.
+            prompt_template: The prompt template to use for generation.
+
+        Returns:
+            A list of generated nuggets.
+        """
+
         @self.limiter.as_decorator()
         def _decorated_generation():
             compact_batch = []

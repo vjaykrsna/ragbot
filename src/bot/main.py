@@ -64,33 +64,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def main() -> None:
     """Initialize and run the Telegram bot application."""
-    settings = initialize_app()
-
-    if not settings.telegram.bot_token:
-        logger.error("TELEGRAM_BOT_TOKEN is not set; aborting bot startup.")
-        return
-
-    application: Application = (
-        Application.builder().token(settings.telegram.bot_token).build()
-    )
-
-    # Initialize the RAG pipeline once (blocking) and add it to bot_data
     try:
-        rag_pipeline = RAGPipeline(settings)
-        application.bot_data["rag_pipeline"] = rag_pipeline
-        logger.info("RAG pipeline initialized successfully.")
+        settings = initialize_app()
+
+        if not settings.telegram.bot_token:
+            logger.error("TELEGRAM_BOT_TOKEN is not set; aborting bot startup.")
+            return
+
+        application: Application = (
+            Application.builder().token(settings.telegram.bot_token).build()
+        )
+
+        # Initialize the RAG pipeline once (blocking) and add it to bot_data
+        try:
+            rag_pipeline = RAGPipeline(settings)
+            application.bot_data["rag_pipeline"] = rag_pipeline
+            logger.info("RAG pipeline initialized successfully.")
+        except Exception:
+            logger.exception("Could not initialize RAG pipeline")
+            application.bot_data["rag_pipeline"] = None
+
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+        )
+
+        logger.info("Starting bot...")
+        application.run_polling()
+
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Bot stopped.")
     except Exception:
-        logger.exception("Could not initialize RAG pipeline")
-        application.bot_data["rag_pipeline"] = None
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    )
-
-    logger.info("Starting bot...")
-    application.run_polling()
-    logger.info("Bot stopped.")
+        logger.exception("An unexpected error occurred during bot startup or runtime.")
 
 
 if __name__ == "__main__":
