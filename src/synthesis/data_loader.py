@@ -10,13 +10,21 @@ logger = logging.getLogger(__name__)
 class DataLoader:
     """
     Handles loading of processed data and prompt templates.
+
+    Args:
+        settings: The application settings.
     """
 
     def __init__(self, settings: AppSettings):
         self.settings = settings
 
     def load_processed_data(self) -> List[Dict[str, Any]]:
-        """Loads processed conversation data from the JSON file."""
+        """
+        Loads processed conversation data from the JSON file.
+
+        Returns:
+            A list of conversations.
+        """
         file_path = self.settings.paths.processed_conversations_file
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -27,7 +35,12 @@ class DataLoader:
             return []
 
     def load_prompt_template(self) -> Optional[str]:
-        """Loads the prompt template from the markdown file."""
+        """
+        Loads the prompt template from the markdown file.
+
+        Returns:
+            The prompt template as a string, or None if the file is not found.
+        """
         try:
             with open(self.settings.paths.prompt_file, "r", encoding="utf-8") as f:
                 logger.info(

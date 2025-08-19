@@ -1,249 +1,16 @@
 import asyncio
-import json
 import logging
 import os
-import re
-from datetime import datetime
 
-import telethon
-from telethon.errors import FloodWaitError
 from telethon.sync import TelegramClient
-from telethon.tl.functions.channels import GetForumTopicsRequest
-from tqdm.asyncio import tqdm_asyncio
 
 from src.core.app import initialize_app
-
-# Globals that will be initialized in main()
-app_context = None
-settings = None
-client = None
+from src.history_extractor.storage import Storage
+from src.history_extractor.telegram_extractor import TelegramExtractor
 
 
-# HELPERS
-def safe_filename(s):
-    """Sanitizes a string into a valid filename."""
-    return re.sub(r"[^a-zA-Z0-9_\-]", "_", s)
-
-
-def normalize_title(title):
-    """Converts a message title entity to a string."""
-    try:
-        return title.text if hasattr(title, "text") else str(title)
-    except Exception:
-        return "UnknownTopic"
-
-
-class TelegramObjectEncoder(json.JSONEncoder):
-    """Custom JSON encoder for Telegram objects (e.g., datetime)."""
-
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if hasattr(obj, "to_dict"):
-            return obj.to_dict()
-        return super().default(obj)
-
-
-# DATA STORAGE & PROGRESS
-def save_messages_to_db(chat_title, topic_id, messages):
-    """Saves messages to the SQLite database."""
-    db = app_context.db
-    ingestion_ts = datetime.now().isoformat()
-    for msg in messages:
-        msg["source_name"] = chat_title
-        msg["source_group_id"] = msg.get("group_id")
-        msg["source_topic_id"] = topic_id
-        msg["source_saved_file"] = None  # No longer saving to individual files
-        msg["ingestion_timestamp"] = ingestion_ts
-    db.insert_messages(messages)
-    logging.info(f"✅ Saved {len(messages)} messages to the database")
-
-
-def load_last_msg_ids():
-    """Loads the last processed message ID for each topic from a file."""
-    if os.path.exists(settings.paths.tracking_file):
-        with open(settings.paths.tracking_file, "r") as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {}  # Return empty dict if file is corrupted
-    return {}
-
-
-def save_last_msg_ids(data):
-    """Saves the last processed message ID for each topic to a file."""
-    with open(settings.paths.tracking_file, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-# CORE MESSAGE PROCESSING
-def get_message_details(msg):
-    """Extracts structured details (type, content, etc.) from a message."""
-    content = msg.text
-    extra_data = {}
-    url_regex = r"https?://[^\s]+"
-
-    # --- Poll Detection ---
-    if isinstance(msg.media, telethon.tl.types.MessageMediaPoll):
-        poll = msg.media.poll
-        results = msg.media.results
-
-        options = []
-        if results and results.results:
-            for answer, result in zip(poll.answers, results.results):
-                option = {"text": answer.text, "voters": result.voters}
-                if hasattr(result, "chosen") and result.chosen:
-                    option["chosen"] = True
-                if hasattr(result, "correct") and result.correct:
-                    option["correct"] = True
-                options.append(option)
-        else:
-            options = [{"text": answer.text, "voters": 0} for answer in poll.answers]
-
-        content = {
-            "question": str(poll.question.text),
-            "options": [
-                {"text": str(o["text"].text), "voters": o["voters"]} for o in options
-            ],
-            "total_voters": results.total_voters if results else 0,
-            "is_quiz": poll.quiz,
-            "is_anonymous": not poll.public_voters,
-        }
-        return "poll", content, {}
-
-    # --- Unified Link Detection ---
-    urls = set()
-    # 1. From entities
-    if msg.entities:
-        for entity in msg.entities:
-            if isinstance(entity, telethon.tl.types.MessageEntityTextUrl):
-                urls.add(entity.url)
-            elif isinstance(entity, telethon.tl.types.MessageEntityUrl):
-                offset, length = entity.offset, entity.length
-                urls.add(msg.text[offset : offset + length])
-    # 2. From WebPage media
-    if (
-        isinstance(msg.media, telethon.tl.types.MessageMediaWebPage)
-        and msg.media.webpage.url
-    ):
-        urls.add(msg.media.webpage.url)
-    # 3. Fallback to regex
-    if msg.text:
-        urls.update(re.findall(url_regex, msg.text))
-
-    if urls:
-        content = msg.text if msg.text else next(iter(urls))  # Use first URL if no text
-        extra_data["urls"] = list(urls)
-        return "link", content, extra_data
-
-    # Default to text message if no other type is detected
-    return "text", content, extra_data
-
-
-async def extract_from_topic(entity, topic, last_msg_ids):
-    """Extracts all new messages from a specific group topic."""
-    messages = []
-    group_id = entity.id
-    topic_id = topic.id
-    topic_title = normalize_title(getattr(topic, "title", "General"))
-    last_id_key = f"{group_id}_{topic_id}"
-    last_id = last_msg_ids.get(last_id_key, 0)
-    max_id = 0
-
-    logging.info(
-        f"  - 📥 Extracting from topic: '{topic_title}' (ID: {topic_id}) [Since message ID > {last_id}]"
-    )
-
-    iterator_kwargs = {"min_id": last_id, "reverse": True}
-    if topic_id != 0:  # 0 is the 'General' topic in non-forum groups
-        iterator_kwargs["reply_to"] = topic_id
-
-    async for msg in tqdm_asyncio(
-        client.iter_messages(entity, **iterator_kwargs),
-        desc=f"{topic_title:20.20}",
-        unit="msg",
-    ):
-        if isinstance(msg, telethon.tl.types.MessageService):
-            continue
-        if not msg.text and not msg.media:
-            continue
-
-        try:
-            message_type, content, extra_data = get_message_details(msg)
-        except Exception:
-            logging.exception(f"Failed to process message {msg.id}. Skipping.")
-            continue
-
-        if not content:
-            continue
-
-        messages.append(
-            {
-                "id": msg.id,
-                "date": msg.date.isoformat(),
-                "sender_id": msg.sender_id,
-                "message_type": message_type,
-                "content": content,
-                "extra_data": extra_data,
-                "reply_to_msg_id": msg.reply_to_msg_id,
-                "topic_id": topic_id,
-                "topic_title": topic_title,
-            }
-        )
-        max_id = max(max_id, msg.id)
-
-    if messages:
-        full_title = f"{entity.title}_{topic_title}"
-        save_messages_to_db(full_title, topic_id, messages)
-        last_msg_ids[last_id_key] = max_id
-
-
-async def extract_from_group_id(group_id, last_msg_ids):
-    try:
-        entity = await client.get_entity(group_id)
-        logging.info(f"\nProcessing Group: {entity.title} (ID: {group_id})")
-        if entity.forum:
-            try:
-                topics_result = await client(
-                    GetForumTopicsRequest(
-                        channel=entity,
-                        offset_date=datetime.now(),
-                        offset_id=0,
-                        offset_topic=0,
-                        limit=100,
-                    )
-                )
-                if topics_result and hasattr(topics_result, "topics"):
-                    logging.info(
-                        f"Found {len(topics_result.topics)} topics. Iterating through them."
-                    )
-                    for topic in topics_result.topics:
-                        await extract_from_topic(entity, topic, last_msg_ids)
-                else:
-                    logging.info("  - Forum group with no topics found. Skipping.")
-            except Exception:
-                logging.exception(
-                    f"  - ❌ Error fetching topics for forum '{entity.title}'"
-                )
-        else:
-            logging.info("  - This is a regular group. Extracting from main chat.")
-            general_topic = type("obj", (object,), {"id": 0, "title": "General"})()
-            await extract_from_topic(entity, general_topic, last_msg_ids)
-    except FloodWaitError as fwe:
-        logging.warning(
-            f"Flood wait error for group {group_id}. Waiting for {fwe.seconds} seconds."
-        )
-        await asyncio.sleep(fwe.seconds)
-        await extract_from_group_id(group_id, last_msg_ids)  # Retry
-    except Exception:
-        logging.exception(f"❌ Error processing group {group_id}")
-
-
-# MAIN ORCHESTRATION
 async def main():
     """Orchestrates the Telegram message extraction process."""
-    global app_context, settings, client
-
     # Initialize the application context
     app_context = initialize_app()
     settings = app_context.settings
@@ -269,13 +36,16 @@ async def main():
         )
         return
 
+    storage = Storage(app_context)
+    extractor = TelegramExtractor(client, storage)
+
     group_ids = settings.telegram.group_ids
-    last_msg_ids = load_last_msg_ids()
+    last_msg_ids = storage.load_last_msg_ids()
 
     for gid in group_ids:
-        await extract_from_group_id(gid, last_msg_ids)
+        await extractor.extract_from_group_id(gid, last_msg_ids)
 
-    save_last_msg_ids(last_msg_ids)
+    storage.save_last_msg_ids(last_msg_ids)
 
     await client.disconnect()
     logging.info("\n🎉 Extraction complete. Client disconnected.")
