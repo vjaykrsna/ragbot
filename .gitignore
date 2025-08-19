@@ -31,5 +31,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Coverage data
+.coverage
+
 # Database files
 *.sqlite
