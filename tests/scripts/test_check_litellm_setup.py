@@ -49,13 +49,13 @@ def test_count_api_keys():
 @patch("socket.create_connection")
 def test_check_redis_connection_success(mock_socket):
     """Test successful Redis connection."""
-    assert check_redis_connection("localhost", 6379) is True
+    assert check_redis_connection("localhost", 6380) is True
 
 
 @patch("socket.create_connection", side_effect=socket.error)
 def test_check_redis_connection_failure(mock_socket):
     """Test failed Redis connection."""
-    assert check_redis_connection("localhost", 6379) is False
+    assert check_redis_connection("localhost", 6380) is False
 
 
 @patch("src.scripts.check_litellm_setup.initialize_app")
@@ -66,7 +66,7 @@ def test_check_redis_connection_failure(mock_socket):
     {
         "LITELLM_PROXY_URL": "http://localhost:8000",
         "REDIS_HOST": "localhost",
-        "REDIS_PORT": "6379",
+        "REDIS_PORT": "6380",
     },
 )
 def test_main_with_redis(mock_check_redis, mock_parse_yaml, mock_initialize_app):
@@ -92,7 +92,7 @@ def test_main_with_redis(mock_check_redis, mock_parse_yaml, mock_initialize_app)
     with patch("logging.Logger.warning") as mock_log_warning:
         main()
         mock_parse_yaml.assert_called_once()
-        mock_check_redis.assert_called_once_with("localhost", 6379)
+        mock_check_redis.assert_called_once_with("localhost", 6380)
         assert mock_log_warning.call_count == 0
 
 

@@ -43,7 +43,7 @@ async def main():
     group_ids = settings.telegram.group_ids
     last_msg_ids = storage.load_last_msg_ids()
 
-    # Display group list upfront and start overall progress bar
+    # Display group list upfront
     logging.info(f"🏢 Groups to process ({len(group_ids)} total):")
     for i, gid in enumerate(group_ids, 1):
         try:
@@ -55,13 +55,15 @@ async def main():
 
     logging.info(f"🚀 Starting extraction of {len(group_ids)} groups...")
 
-    # Overall progress bar for all groups
+    # Overall progress bar for all groups with better configuration
     with tqdm(
         total=len(group_ids),
         desc="📊 Overall Progress",
         unit="group",
         colour="green",
         bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}]",
+        leave=True,
+        position=0,
     ) as overall_pbar:
         for i, gid in enumerate(group_ids, 1):
             try:

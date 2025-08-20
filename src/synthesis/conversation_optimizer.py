@@ -96,7 +96,7 @@ class ConversationOptimizer:
                 )
 
         logger.info(
-            f"Conversation filtering: {kept_count}/{total_count} conversations kept ({kept_count/total_count*100:.1f}%)"
+            f"Conversation filtering: {kept_count}/{total_count} conversations kept ({kept_count / total_count * 100:.1f}%)"
         )
         return filtered
 
