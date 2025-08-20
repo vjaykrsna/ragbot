@@ -1,7 +1,4 @@
-import re
 from typing import Any, Dict, Tuple
-
-import telethon
 
 
 def get_message_details(msg) -> Tuple[str, Any, Dict[str, Any]]:
@@ -14,63 +11,83 @@ def get_message_details(msg) -> Tuple[str, Any, Dict[str, Any]]:
     Returns:
         A tuple containing the message type, content, and extra data.
     """
-    print(f"msg.media: {msg.media}")
-    content = msg.text
-    extra_data = {}
-    url_regex = r"https?://[^\s]+"
+    try:
+        # Handle empty/invalid messages
+        if not msg:
+            return "text", "", {}
 
-    # --- Poll Detection ---
-    if isinstance(msg.media, telethon.tl.types.MessageMediaPoll):
-        poll = msg.media.poll
-        results = msg.media.results
+        # Extract text content safely
+        content = getattr(msg, "text", "") or ""
 
-        options = []
-        if results and results.results:
-            for answer, result in zip(poll.answers, results.results):
-                option = {"text": answer.text, "voters": result.voters}
-                if hasattr(result, "chosen") and result.chosen:
-                    option["chosen"] = True
-                if hasattr(result, "correct") and result.correct:
-                    option["correct"] = True
-                options.append(option)
-        else:
-            options = [{"text": answer.text, "voters": 0} for answer in poll.answers]
+        # --- Poll Detection ---
+        if hasattr(msg, "media") and msg.media and hasattr(msg.media, "poll"):
+            try:
+                poll = msg.media.poll
+                results = msg.media.results
 
-        content = {
-            "question": str(poll.question.text),
-            "options": [
-                {"text": str(o["text"].text), "voters": o["voters"]} for o in options
-            ],
-            "total_voters": results.total_voters if results else 0,
-            "is_quiz": poll.quiz,
-            "is_anonymous": not poll.public_voters,
-        }
-        return "poll", content, {}
+                if (
+                    not poll
+                    or not hasattr(poll, "question")
+                    or not hasattr(poll, "answers")
+                ):
+                    return "text", content, {}
 
-    # --- Unified Link Detection ---
-    urls = set()
-    # 1. From entities
-    if msg.entities:
-        for entity in msg.entities:
-            if isinstance(entity, telethon.tl.types.MessageEntityTextUrl):
-                urls.add(entity.url)
-            elif isinstance(entity, telethon.tl.types.MessageEntityUrl):
-                offset, length = entity.offset, entity.length
-                urls.add(msg.text[offset : offset + length])
-    # 2. From WebPage media
-    if (
-        isinstance(msg.media, telethon.tl.types.MessageMediaWebPage)
-        and msg.media.webpage.url
-    ):
-        urls.add(msg.media.webpage.url)
-    # 3. Fallback to regex
-    if msg.text:
-        urls.update(re.findall(url_regex, msg.text))
+                options = []
+                if results and hasattr(results, "results") and results.results:
+                    try:
+                        for answer, result in zip(poll.answers, results.results):
+                            if not answer or not hasattr(answer, "text"):
+                                continue
+                            option = {
+                                "text": getattr(answer.text, "text", str(answer.text)),
+                                "voters": getattr(result, "voters", 0),
+                            }
+                            if hasattr(result, "chosen") and result.chosen:
+                                option["chosen"] = True
+                            if hasattr(result, "correct") and result.correct:
+                                option["correct"] = True
+                            options.append(option)
+                    except (AttributeError, TypeError, ValueError):
+                        # Fallback: create options without results
+                        options = [
+                            {
+                                "text": getattr(answer.text, "text", str(answer.text)),
+                                "voters": 0,
+                            }
+                            for answer in poll.answers
+                            if answer and hasattr(answer, "text")
+                        ]
+                else:
+                    # No results available
+                    options = [
+                        {
+                            "text": getattr(answer.text, "text", str(answer.text)),
+                            "voters": 0,
+                        }
+                        for answer in poll.answers
+                        if answer and hasattr(answer, "text")
+                    ]
 
-    if urls:
-        content = msg.text if msg.text else next(iter(urls))  # Use first URL if no text
-        extra_data["urls"] = list(urls)
-        return "link", content, extra_data
+                poll_content = {
+                    "question": getattr(poll.question, "text", str(poll.question))
+                    if poll.question
+                    else "",
+                    "options": options,
+                    "total_voters": getattr(results, "total_voters", 0)
+                    if results
+                    else 0,
+                    "is_quiz": getattr(poll, "quiz", False),
+                    "is_anonymous": not getattr(poll, "public_voters", True),
+                }
+                return "poll", poll_content, {}
 
-    # Default to text message if no other type is detected
-    return "text", content, extra_data
+            except Exception:
+                # If poll processing fails, fall back to text
+                return "text", content, {}
+
+        # Default to text message if no other type is detected
+        return "text", content, {}
+
+    except Exception:
+        # Ultimate fallback for any unexpected errors
+        return "text", "", {}

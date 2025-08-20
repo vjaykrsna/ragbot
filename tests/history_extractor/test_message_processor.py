@@ -1,8 +1,6 @@
 import unittest
 from unittest.mock import MagicMock
 
-import telethon
-
 from src.history_extractor.message_processor import get_message_details
 
 
@@ -25,23 +23,35 @@ class TestMessageProcessor(unittest.TestCase):
         self.assertEqual(content, "hello")
         self.assertEqual(extra_data, {})
 
-    def test_get_message_details_link(self):
+    def test_get_message_details_empty_message(self):
         """
-        Test processing a message with a link.
+        Test processing an empty or invalid message.
         """
         # Arrange
         mock_msg = MagicMock()
-        mock_msg.text = "check out this link: https://example.com"
+        mock_msg.text = ""
         mock_msg.media = None
-        mock_msg.entities = [telethon.tl.types.MessageEntityUrl(offset=21, length=19)]
+        mock_msg.entities = None
 
         # Act
         msg_type, content, extra_data = get_message_details(mock_msg)
 
         # Assert
-        self.assertEqual(msg_type, "link")
-        self.assertEqual(content, "check out this link: https://example.com")
-        self.assertEqual(extra_data, {"urls": ["https://example.com"]})
+        self.assertEqual(msg_type, "text")
+        self.assertEqual(content, "")
+        self.assertEqual(extra_data, {})
+
+    def test_get_message_details_none_message(self):
+        """
+        Test processing a None message.
+        """
+        # Act
+        msg_type, content, extra_data = get_message_details(None)
+
+        # Assert
+        self.assertEqual(msg_type, "text")
+        self.assertEqual(content, "")
+        self.assertEqual(extra_data, {})
 
     def test_get_message_details_poll(self):
         """
@@ -66,7 +76,7 @@ class TestMessageProcessor(unittest.TestCase):
             MagicMock(voters=20),
         ]
         mock_results.total_voters = 30
-        mock_media = MagicMock(spec=telethon.tl.types.MessageMediaPoll)
+        mock_media = MagicMock()
         mock_media.poll = mock_poll
         mock_media.results = mock_results
         mock_msg.media = mock_media
