@@ -9,6 +9,7 @@ from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
 from src.rag import litellm_client
+from src.synthesis.conversation_optimizer import ConversationOptimizer
 from src.synthesis.decorators import retry_with_backoff
 
 logger = logging.getLogger(__name__)
@@ -23,9 +24,15 @@ class NuggetGenerator:
         limiter: The rate limiter.
     """
 
-    def __init__(self, settings: AppSettings, limiter: Limiter):
+    def __init__(
+        self,
+        settings: AppSettings,
+        limiter: Limiter,
+        optimizer: ConversationOptimizer = None,
+    ):
         self.settings = settings
         self.limiter = limiter
+        self.optimizer = optimizer or ConversationOptimizer()
 
     @retry_with_backoff
     def generate_nuggets_batch(
@@ -44,8 +51,14 @@ class NuggetGenerator:
 
         @self.limiter.as_decorator()
         def _decorated_generation():
+            # Apply cost optimization
+            optimized_batch = self.optimizer.deduplicate_conversations(conv_batch)
+            logger.info(
+                f"Optimization: {len(conv_batch)} → {len(optimized_batch)} conversations after deduplication"
+            )
+
             compact_batch = []
-            for conv in conv_batch:
+            for conv in optimized_batch:
                 conv_msgs = conv.get("conversation") or conv.get("messages") or conv
                 compact_msgs = [
                     {
@@ -145,6 +158,7 @@ class NuggetGenerator:
                         self._save_failed_batch(
                             conv_batch, "Invalid nugget structure", str(nugget)
                         )
+
                 return validated_nuggets
             except json.JSONDecodeError:
                 logger.warning(
