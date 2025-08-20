@@ -13,6 +13,7 @@ from tqdm import tqdm
 from src.core.app import initialize_app
 from src.core.config import AppSettings
 from src.core.database import Database
+from src.synthesis.conversation_optimizer import ConversationOptimizer
 from src.synthesis.data_loader import DataLoader
 from src.synthesis.failed_batch_handler import FailedBatchHandler
 from src.synthesis.nugget_embedder import NuggetEmbedder
@@ -104,10 +105,19 @@ class KnowledgeSynthesizer:
 
         logger.info(f"Resuming from conversation index {start_index}")
 
+        # Apply conversation optimization before batching
+        logger.info("Applying conversation optimization...")
+        optimized_conversations = self.nugget_generator.optimizer.optimize_batch(
+            conversations[start_index:]
+        )
+        logger.info(
+            f"Optimization complete: {len(optimized_conversations)} high-quality conversations ready for processing"
+        )
+
         batch_size = self.settings.synthesis.batch_size
         batches = [
-            conversations[i : i + batch_size]
-            for i in range(start_index, len(conversations), batch_size)
+            optimized_conversations[i : i + batch_size]
+            for i in range(0, len(optimized_conversations), batch_size)
         ]
 
         processed_hashes = self.progress_tracker.load_processed_hashes()
@@ -144,9 +154,10 @@ class KnowledgeSynthesizer:
                                 processed_hashes.add(bh)
                             total_nuggets_stored += num_stored
                             last_item_in_batch = len(batches[batch_index]) - 1
+                            # Since we're working with optimized conversations, adjust the index calculation
                             new_last_processed_index = (
                                 start_index
-                                + (batch_index * batch_size)
+                                + batch_index * batch_size
                                 + last_item_in_batch
                             )
                             self.progress_tracker.save_progress(
@@ -161,6 +172,7 @@ class KnowledgeSynthesizer:
                     pbar.set_postfix({"Stored": f"{total_nuggets_stored}"})
 
         self.progress_tracker.save_processed_hashes(processed_hashes)
+
         logger.info(
             f"\n--- Knowledge Synthesis Complete ---\n"
             f"Total nuggets stored in this run: {total_nuggets_stored}"
@@ -236,7 +248,10 @@ def main() -> None:
 
     data_loader = DataLoader(settings)
     limiter = Limiter(Rate(settings.synthesis.requests_per_minute, Duration.MINUTE))
-    nugget_generator = NuggetGenerator(settings, limiter)
+
+    # Initialize optimization components
+    optimizer = ConversationOptimizer()
+    nugget_generator = NuggetGenerator(settings, limiter, optimizer)
     nugget_embedder = NuggetEmbedder(settings, limiter)
     nugget_store = NuggetStore()
     progress_tracker = ProgressTracker(settings)
