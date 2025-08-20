@@ -49,18 +49,18 @@ The offline pipeline is a multi-step process that transforms raw, unstructured c
 -   **Script:** `src/scripts/extract_history.py`
 -   **Process:**
     1.  The `extract_history.py` script uses the Telethon library to connect to a personal Telegram account.
-    2.  It fetches the entire message history from the specified Telegram group(s) (defined in `src/utils/config.py`).
-    3.  The raw message data (including message ID, text, sender ID, and timestamp) is saved to a JSON file.
+    2.  It fetches the entire message history from the specified Telegram group(s) (defined in `src/core/config.py`).
+    3.  The raw message data (including message ID, text, sender ID, and timestamp) is saved to the SQLite database.
 
-### 3.2. Conversation Thread Building
+### 3.2. Data Processing Pipeline
 
 -   **Tool:** `Python`
--   **Script:** `src/scripts/process_data.py`
+-   **Script:** Integrated into `src/scripts/synthesize_knowledge.py` via `src/processing/pipeline.py`
 -   **Process:**
-    1.  The `process_data.py` script reads the raw `.jsonl` files in a streaming fashion.
-    2.  It performs an external sort on the messages to handle large volumes of data without high memory usage.
-    3.  It then groups messages into conversation threads based on reply chains and temporal proximity.
-    4.  The output is a structured JSON file (`processed_conversations.json`) containing a list of these conversation threads.
+    1.  The unified pipeline processes data in streaming fashion directly from the database.
+    2.  It performs external sorting to handle large volumes of data without high memory usage.
+    3.  Messages are anonymized and grouped into conversation threads based on reply chains and temporal proximity.
+    4.  The processed conversations are stored in JSON format for knowledge synthesis.
 
 ### 3.3. Knowledge Synthesis
 
@@ -126,7 +126,7 @@ The live RAG pipeline is the heart of the Telegram bot, responsible for generati
 ### 5.1. Query Embedding
 
 -   **Tool:** `Gemini Embedding Model` (via `litellm`)
--   **Script:** `src/core/rag_pipeline.py`
+-   **Script:** `src/rag/rag_pipeline.py`
 -   **Process:**
     1.  When a user sends a message to the bot, the `handle_message` function in `src/bot/main.py` is triggered.
     2.  The user's query is passed to the `RAGPipeline`.
@@ -154,7 +154,7 @@ This is the most critical part of the pipeline, where we leverage the rich metad
         -   **Recency:** A granular scoring mechanism is applied based on the `last_message_timestamp`. More recent nuggets receive a higher score.
         -   **Status:** A predefined weight is assigned to each `status` (e.g., `FACT` > `COMMUNITY_OPINION` > `SPECULATION`).
         -   **Semantic Score:** The original similarity score from ChromaDB is also factored in.
-    4.  The nuggets are then re-sorted based on this new score, and the top-n (e.g., n=5) are selected as the final context. The weights for each score component are configurable in `src/utils/config.py`.
+    4.  The nuggets are then re-sorted based on this new score, and the top-n (e.g., n=5) are selected as the final context. The weights for each score component are configurable in `src/core/config.py`.
 
 ### 5.3. Response Generation
 
@@ -172,7 +172,7 @@ This section provides instructions for setting up the project for local developm
 ### 6.1. Local Setup
 
 1.  **Prerequisites:**
-    *   Python 3.10+
+    *   Python 3.11+
     *   A Telegram account
     *   Google Gemini API keys
 
@@ -187,8 +187,8 @@ This section provides instructions for setting up the project for local developm
     *   Add your Google Gemini API keys.
 
 4.  **Running the System:**
-    *   **Start the LiteLLM Proxy:** In a separate terminal, run `litellm --config src/utils/litellm_config.yaml`. This proxy manages your API keys and provides a unified endpoint.
-    *   **Build the Knowledge Base:** Run `python -m src.scripts.synthesize_knowledge` to process the chat history and populate the vector database.
+    *   **Extract Chat History:** Run `python -m src.scripts.extract_history` to fetch messages from Telegram groups.
+    *   **Build the Knowledge Base:** Run `python -m src.scripts.synthesize_knowledge` to process and create the knowledge base.
     *   **Start the Bot:** Run `python -m src.bot.main` to start the live Telegram bot.
 
 ### 6.2. Deployment
