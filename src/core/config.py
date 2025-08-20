@@ -161,7 +161,7 @@ class RAGSettings:
             "DEFAULT": 0.1,
         }
     )
-    collection_name: str = "telegram_knowledge_base_v2"
+    collection_name: str = "telegram_knowledge_base"
 
 
 @dataclass
@@ -297,7 +297,7 @@ def get_settings() -> AppSettings:
         '{"FACT": 1.5, "COMMUNITY_OPINION": 1.0, "SPECULATION": 0.5, "DEFAULT": 0.1}',
     )
     rag_settings = RAGSettings(
-        collection_name=os.getenv("COLLECTION_NAME", "telegram_knowledge_base_v2"),
+        collection_name=os.getenv("COLLECTION_NAME", "telegram_knowledge_base"),
         status_weights=json.loads(status_weights_str),
         semantic_score_weight=float(os.getenv("SEMANTIC_SCORE_WEIGHT", "0.5")),
         recency_score_weight=float(os.getenv("RECENCY_SCORE_WEIGHT", "0.3")),
