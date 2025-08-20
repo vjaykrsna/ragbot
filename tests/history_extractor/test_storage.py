@@ -19,7 +19,6 @@ class TestStorage(unittest.TestCase):
         # Arrange
         mock_db = MagicMock()
         self.mock_app_context.db = mock_db
-        self.mock_settings.get.return_value = "2023-01-01T00:00:00Z"
         messages = [{"id": 1, "content": "hello"}]
 
         # Act

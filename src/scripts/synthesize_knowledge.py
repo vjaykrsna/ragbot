@@ -6,7 +6,6 @@ from collections import defaultdict
 from typing import Any, Dict, List
 
 import chromadb
-import chromadb.errors
 from chromadb.api.models.Collection import Collection
 from pyrate_limiter import Duration, Limiter, Rate
 from tqdm import tqdm

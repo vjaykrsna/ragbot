@@ -10,6 +10,11 @@ class Database:
     def __init__(self, settings: PathSettings):
         os.makedirs(settings.db_dir, exist_ok=True)
         self.db_path = os.path.join(settings.db_dir, "ragbot.sqlite")
+        # Create the database file if it doesn't exist
+        if not os.path.exists(self.db_path):
+            # Create an empty file to ensure SQLite can connect
+            with open(self.db_path, "w"):
+                pass
         # Defer table creation until the first connection
 
     @contextmanager

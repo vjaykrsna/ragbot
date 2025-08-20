@@ -3,6 +3,7 @@ import logging
 import os
 
 from telethon.sync import TelegramClient
+from tqdm.asyncio import tqdm
 
 from src.core.app import initialize_app
 from src.history_extractor.storage import Storage
@@ -42,8 +43,47 @@ async def main():
     group_ids = settings.telegram.group_ids
     last_msg_ids = storage.load_last_msg_ids()
 
-    for gid in group_ids:
-        await extractor.extract_from_group_id(gid, last_msg_ids)
+    # Display group list upfront and start overall progress bar
+    logging.info(f"🏢 Groups to process ({len(group_ids)} total):")
+    for i, gid in enumerate(group_ids, 1):
+        try:
+            entity = await client.get_entity(gid)
+            group_name = getattr(entity, "title", f"Group {gid}")
+            logging.info(f"  {i:2d}. {group_name}")
+        except Exception:
+            logging.info(f"  {i:2d}. Group {gid} (name unavailable)")
+
+    logging.info(f"🚀 Starting extraction of {len(group_ids)} groups...")
+
+    # Overall progress bar for all groups
+    with tqdm(
+        total=len(group_ids),
+        desc="📊 Overall Progress",
+        unit="group",
+        colour="green",
+        bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}]",
+    ) as overall_pbar:
+        for i, gid in enumerate(group_ids, 1):
+            try:
+                # Get group info for better display
+                entity = await client.get_entity(gid)
+                group_name = getattr(entity, "title", f"Group {gid}")
+                logging.info(
+                    f"📂 Processing group {i}/{len(group_ids)}: '{group_name}'"
+                )
+
+                # Process this group with progress tracking
+                await extractor.extract_from_group_id(gid, last_msg_ids)
+
+                overall_pbar.update(1)
+                overall_pbar.set_postfix_str(f"✅ {group_name}")
+
+            except Exception as e:
+                logging.error(
+                    f"❌ Failed to process group {i}/{len(group_ids)} '{group_name}': {e}"
+                )
+                overall_pbar.update(1)
+                overall_pbar.set_postfix_str(f"❌ {group_name}")
 
     storage.save_last_msg_ids(last_msg_ids)
 

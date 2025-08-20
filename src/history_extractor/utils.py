@@ -1,4 +1,5 @@
 import re
+from typing import Any
 
 
 def safe_filename(s: str) -> str:
@@ -14,7 +15,7 @@ def safe_filename(s: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_\-]", "_", s)
 
 
-def normalize_title(title) -> str:
+def normalize_title(title: Any) -> str:
     """
     Converts a message title entity to a string.
 
