@@ -113,5 +113,5 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(settings.telegram.session_name, "telegram_session")
             self.assertEqual(settings.console_log_level, "INFO")
             self.assertEqual(settings.synthesis.max_workers, 4)
-            self.assertEqual(settings.rag.collection_name, "telegram_knowledge_base_v2")
+            self.assertEqual(settings.rag.collection_name, "telegram_knowledge_base")
             self.assertEqual(settings.conversation.time_threshold_seconds, 300)
