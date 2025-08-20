@@ -7,6 +7,7 @@ flags (cache=True) and logging.
 """
 
 import logging
+import os
 import time
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
@@ -47,14 +48,19 @@ def _get_router() -> litellm.Router:
 
 
 def complete(
-    prompt_messages: List[Dict[str, str]], max_retries: int = 3
+    prompt_messages: List[Dict[str, str]], max_retries: int = None
 ) -> Optional[Any]:
     """Call router.completion with retries. Returns the raw response or None."""
+    if max_retries is None:
+        max_retries = int(os.getenv("COMPLETION_MAX_RETRIES", "3"))
+
     router = _get_router()
+    synthesis_model_name = os.getenv("SYNTHESIS_MODEL_NAME", "gemini-synthesis-model")
+
     for attempt in range(max_retries):
         try:
             resp = router.completion(
-                model="gemini-synthesis-model",  # Target the synthesis model group
+                model=synthesis_model_name,  # Target the synthesis model group
                 messages=prompt_messages,
             )
             return resp
@@ -71,13 +77,18 @@ def complete(
     return None
 
 
-def embed(texts: List[str], max_retries: int = 2) -> Optional[List[List[float]]]:
+def embed(texts: List[str], max_retries: int = None) -> Optional[List[List[float]]]:
     """Call router.embedding with retries. Returns list of vectors or None."""
+    if max_retries is None:
+        max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "2"))
+
     router = _get_router()
+    embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-model")
+
     for attempt in range(max_retries):
         try:
             resp = router.embedding(
-                model="gemini-embedding-model",  # Target the embedding model group
+                model=embedding_model_name,  # Target the embedding model group
                 input=texts,
             )
             if resp and resp.get("data"):
