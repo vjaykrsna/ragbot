@@ -18,7 +18,7 @@ class TestDatabaseIntegration(unittest.TestCase):
                 "PHONE": "+1234567890",
                 "PASSWORD": "test_password",
                 "BOT_TOKEN": "test_token",
-                "LITELLM_CONFIG_JSON": '{"model_list": [], "litellm_settings": {}}',
+                "LITELLM_CONFIG_JSON": '{"model_list": [{"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "fake-key"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "fake-key"}}], "litellm_settings": {}}',
             },
         ):
             self.app_context = initialize_app()

@@ -139,11 +139,19 @@ class LiteLLMSettings:
 
 @dataclass
 class SynthesisSettings:
-    """Settings for the knowledge synthesis process."""
+    """Settings for the knowledge synthesis process.
 
-    max_workers: int = 5
-    requests_per_minute: int = 90
-    batch_size: int = 2
+    These defaults are optimized for users with 20+ API keys.
+    Adjust based on your specific rate limits and performance needs:
+
+    - max_workers: Number of parallel processing threads
+    - requests_per_minute: API rate limit (higher with more keys)
+    - batch_size: Conversations per API call (larger = more efficient)
+    """
+
+    max_workers: int = 4  # Optimized for 20 API keys
+    requests_per_minute: int = 180  # High throughput with 20 keys
+    batch_size: int = 8  # Larger batches for better efficiency
 
 
 @dataclass
@@ -285,10 +293,13 @@ def get_settings() -> AppSettings:
         litellm_settings.embedding_model_proxy = embedding_model_info.model_name
 
     # --- Synthesis Settings ---
+    # Optimized defaults leveraging 20 API keys for higher throughput
     synthesis_settings = SynthesisSettings(
-        requests_per_minute=int(os.getenv("REQUESTS_PER_MINUTE", "60")),
-        batch_size=int(os.getenv("BATCH_SIZE", "10")),
-        max_workers=int(os.getenv("MAX_WORKERS", "4")),
+        requests_per_minute=int(
+            os.getenv("REQUESTS_PER_MINUTE", "180")
+        ),  # Much higher with 20 keys
+        batch_size=int(os.getenv("BATCH_SIZE", "8")),  # Larger batches for efficiency
+        max_workers=int(os.getenv("MAX_WORKERS", "4")),  # More workers with more keys
     )
 
     # --- RAG Settings ---
@@ -310,6 +321,11 @@ def get_settings() -> AppSettings:
         time_threshold_seconds=int(os.getenv("TIME_THRESHOLD_SECONDS", "300")),
     )
 
+    # --- Validate Configuration ---
+    _validate_configuration(
+        telegram_settings, litellm_settings, synthesis_settings, rag_settings
+    )
+
     # --- App Settings ---
     return AppSettings(
         telegram=telegram_settings,
@@ -320,3 +336,79 @@ def get_settings() -> AppSettings:
         conversation=conversation_settings,
         console_log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )
+
+
+def _validate_configuration(
+    telegram: TelegramSettings,
+    litellm: LiteLLMSettings,
+    synthesis: SynthesisSettings,
+    rag: RAGSettings,
+) -> None:
+    """Validate configuration values and provide helpful warnings."""
+
+    # Count API keys from model list
+    synthesis_keys = sum(
+        1
+        for m in litellm.model_list
+        if "synthesis" in m.model_name
+        and m.litellm_params.api_key.startswith("os.environ/GEMINI_API_KEY_")
+    )
+    # Count embedding keys (for future use if needed)
+    sum(
+        1
+        for m in litellm.model_list
+        if "embedding" in m.model_name
+        and m.litellm_params.api_key.startswith("os.environ/GEMINI_API_KEY_")
+    )
+
+    # Validate synthesis settings based on available API keys
+    if synthesis.max_workers > synthesis_keys:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"max_workers ({synthesis.max_workers}) exceeds synthesis API keys ({synthesis_keys}). "
+            f"Consider reducing max_workers or adding more API keys."
+        )
+
+    # Validate rate limits
+    if synthesis.requests_per_minute > (
+        synthesis_keys * 60
+    ):  # Conservative estimate per key
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"requests_per_minute ({synthesis.requests_per_minute}) seems high for {synthesis_keys} API keys. "
+            f"Consider reducing to {synthesis_keys * 60} or add more API keys."
+        )
+
+    # Validate batch size
+    if synthesis.batch_size < 1 or synthesis.batch_size > 20:
+        raise ValueError(
+            f"batch_size must be between 1 and 20, got {synthesis.batch_size}"
+        )
+
+    # Validate RAG weights
+    total_weight = (
+        rag.semantic_score_weight + rag.recency_score_weight + rag.status_score_weight
+    )
+    if not abs(total_weight - 1.0) < 0.001:  # Allow small floating point errors
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"RAG weights should sum to 1.0, got {total_weight}. Consider normalizing."
+        )
+
+    # Validate model list
+    if not litellm.model_list:
+        raise ValueError("No models configured in LITELLM_CONFIG_JSON")
+
+    synthesis_models = [m for m in litellm.model_list if "synthesis" in m.model_name]
+    embedding_models = [m for m in litellm.model_list if "embedding" in m.model_name]
+
+    if not synthesis_models:
+        raise ValueError("No synthesis models configured")
+    if not embedding_models:
+        raise ValueError("No embedding models configured")

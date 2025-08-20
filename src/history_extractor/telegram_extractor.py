@@ -74,6 +74,7 @@ class TelegramExtractor:
             unit="msg",
             leave=False,
             bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}]",
+            position=1,
         ) as pbar:
             processed_count = 0
             saved_count = 0
@@ -81,8 +82,8 @@ class TelegramExtractor:
             for msg in message_list:
                 try:
                     message_type, content, extra_data = get_message_details(msg)
-                except Exception:
-                    logging.exception(f"Failed to process message {msg.id}. Skipping.")
+                except Exception as e:
+                    logging.debug(f"Failed to process message {msg.id}: {e}")
                     pbar.update(1)
                     processed_count += 1
                     continue
@@ -171,9 +172,9 @@ class TelegramExtractor:
                             await self.extract_from_topic(entity, topic, last_msg_ids)
                     else:
                         logging.info("  - Forum group with no topics found. Skipping.")
-                except Exception:
+                except Exception as e:
                     logging.exception(
-                        f"  - ❌ Error fetching topics for forum '{entity.title}'"
+                        f"  - ❌ Error fetching topics for forum '{entity.title}': {e}"
                     )
             else:
                 logging.info("  - This is a regular group. Extracting from main chat.")
@@ -185,5 +186,5 @@ class TelegramExtractor:
             )
             await asyncio.sleep(fwe.seconds)
             await self.extract_from_group_id(group_id, last_msg_ids)  # Retry
-        except Exception:
-            logging.exception(f"❌ Error processing group {group_id}")
+        except Exception as e:
+            logging.exception(f"❌ Error processing group {group_id}: {e}")

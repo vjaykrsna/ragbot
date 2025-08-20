@@ -24,7 +24,14 @@ class TestConfig(unittest.TestCase):
                         "model": "text-embedding-ada-002",
                         "api_key": "fake-key",
                     },
-                }
+                },
+                {
+                    "model_name": "gemini-synthesis-model",
+                    "litellm_params": {
+                        "model": "gemini/gemini-2.5-flash",
+                        "api_key": "fake-key",
+                    },
+                },
             ],
             "router_settings": {"routing_strategy": "simple-shuffle"},
             "litellm_settings": {"set_verbose": True},
@@ -50,7 +57,7 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(
                 settings.litellm.router_settings.routing_strategy, "simple-shuffle"
             )
-            self.assertEqual(len(settings.litellm.model_list), 1)
+            self.assertEqual(len(settings.litellm.model_list), 2)
             self.assertEqual(
                 settings.litellm.embedding_model_name, "text-embedding-ada-002"
             )
@@ -97,13 +104,32 @@ class TestConfig(unittest.TestCase):
         """
         Test that default values are correctly applied for optional settings.
         """
+        litellm_config = {
+            "model_list": [
+                {
+                    "model_name": "gemini-synthesis-model",
+                    "litellm_params": {
+                        "model": "gemini/gemini-2.5-flash",
+                        "api_key": "fake-key",
+                    },
+                },
+                {
+                    "model_name": "gemini-embedding-model",
+                    "litellm_params": {
+                        "model": "gemini/text-embedding-004",
+                        "api_key": "fake-key",
+                    },
+                },
+            ],
+            "litellm_settings": {},
+        }
         minimal_env = {
             "API_ID": "12345",
             "API_HASH": "fake_hash",
             "PHONE": "15551234567",
             "PASSWORD": "fake_password",
             "BOT_TOKEN": "fake_bot_token",
-            "LITELLM_CONFIG_JSON": '{"model_list": []}',
+            "LITELLM_CONFIG_JSON": json.dumps(litellm_config),
         }
 
         with patch.dict(os.environ, minimal_env, clear=True):

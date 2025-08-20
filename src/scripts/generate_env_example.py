@@ -30,6 +30,13 @@ THIRD_PARTY_VARS = {
 # This content will be appended to the end of the .env.example file.
 # It's used for complex variables that require detailed explanations and examples.
 MANUAL_ENV_SECTION = """
+# --- Performance Optimization Notes ---
+# These defaults are optimized for users with 20 API keys.
+# If you have fewer API keys, consider reducing:
+# - REQUESTS_PER_MINUTE to ~60 (1 key) or ~120 (5 keys)
+# - MAX_WORKERS to ~2 (1 key) or ~3 (5 keys)
+# - BATCH_SIZE to ~3-5 for slower processing
+
 # --- LiteLLM Configuration ---
 # --- LiteLLM Configuration ---
 # The entire LiteLLM configuration, including the model list for load balancing,
@@ -37,11 +44,11 @@ MANUAL_ENV_SECTION = """
 # IMPORTANT: This must be a single line of valid JSON.
 # You will need to define your GEMINI_API_KEY_1 through GEMINI_API_KEY_20 as
 # separate environment variables for LiteLLM to pick them up.
-# You also need to define REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD if you are using cache.
+# The Redis settings (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD) are automatically discovered from the codebase.
 
 LITELLM_CONFIG_JSON={"model_list": [{"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_1"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_2"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_3"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_4"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_5"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_6"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_7"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_8"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_9"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_10"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_11"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_12"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_13"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_14"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_15"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_16"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_17"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_18"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_19"}}, {"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "os.environ/GEMINI_API_KEY_20"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_1"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_2"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_3"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_4"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_5"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_6"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_7"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_8"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_9"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_10"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_11"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_12"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_13"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_14"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_15"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_16"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_17"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_18"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_19"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "os.environ/GEMINI_API_KEY_20"}}], "router_settings": {"routing_strategy": "usage-based-routing-v2", "cache_responses": true, "cache_kwargs": {"type": "redis", "host": "os.environ/REDIS_HOST", "port": "os.environ/REDIS_PORT", "password": "os.environ/REDIS_PASSWORD", "ttl": 3600}}, "litellm_settings": {"drop_params": true, "turn_off_message_logging": true, "set_verbose": false}}
 
-# You will also need to set the API keys and any Redis credentials in your environment:
+# You will also need to set the API keys in your environment:
 GEMINI_API_KEY_1=
 GEMINI_API_KEY_2=
 GEMINI_API_KEY_3=
@@ -62,10 +69,6 @@ GEMINI_API_KEY_17=
 GEMINI_API_KEY_18=
 GEMINI_API_KEY_19=
 GEMINI_API_KEY_20=
-
-REDIS_HOST=
-REDIS_PORT=6379
-REDIS_PASSWORD=
 """
 
 
