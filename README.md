@@ -53,7 +53,7 @@ pip install -r requirements.txt
 
 For development, install the development dependencies as well, which include tools for testing and code quality:
 ```bash
-pip install -r requirements-dev.txt
+pip install -r dev-requirements.txt
 ```
 
 ### 3. Install Pre-commit Hooks
