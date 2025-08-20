@@ -10,7 +10,6 @@ class TestTelegramExtractor(unittest.IsolatedAsyncioTestCase):
         self.mock_storage = MagicMock()
         self.extractor = TelegramExtractor(self.mock_client, self.mock_storage)
 
-    @unittest.skip("Complex async mocking with tqdm_asyncio - temporarily disabled")
     async def test_extract_from_topic(self):
         """
         Test extracting messages from a single topic.
@@ -18,6 +17,7 @@ class TestTelegramExtractor(unittest.IsolatedAsyncioTestCase):
         # Arrange
         mock_entity = MagicMock()
         mock_entity.id = 123
+        mock_entity.title = "Test Group"
         mock_topic = MagicMock()
         mock_topic.id = 456
         mock_topic.title = "Test Topic"
@@ -28,8 +28,12 @@ class TestTelegramExtractor(unittest.IsolatedAsyncioTestCase):
         mock_msg.text = "hello"
         mock_msg.media = None
         mock_msg.entities = None
+        mock_msg.date = MagicMock()
         mock_msg.date.isoformat.return_value = "2023-01-01T00:00:00Z"
+        mock_msg.sender_id = 789
+        mock_msg.reply_to_msg_id = None
 
+        # Create proper async iterator
         class MockAsyncIterator:
             def __init__(self, items):
                 self.items = items
@@ -44,19 +48,26 @@ class TestTelegramExtractor(unittest.IsolatedAsyncioTestCase):
                 except StopIteration:
                     raise StopAsyncIteration
 
-        self.mock_client.iter_messages.return_value = MockAsyncIterator([mock_msg])
+        # Make iter_messages return the async iterator directly
+        self.mock_client.iter_messages = MagicMock(
+            return_value=MockAsyncIterator([mock_msg])
+        )
 
-        async def mock_tqdm(iterable, *args, **kwargs):
-            for item in iterable:
-                yield item
+        # Mock tqdm context manager
+        mock_pbar = MagicMock()
+        mock_pbar.__enter__.return_value = mock_pbar
+        mock_pbar.__exit__.return_value = None
 
-        with patch("src.history_extractor.telegram_extractor.tqdm_asyncio", mock_tqdm):
+        with patch(
+            "src.history_extractor.telegram_extractor.tqdm", return_value=mock_pbar
+        ):
             await self.extractor.extract_from_topic(
                 mock_entity, mock_topic, last_msg_ids
             )
 
         # Assert
         self.mock_storage.save_messages_to_db.assert_called_once()
+        mock_pbar.set_postfix_str.assert_called()
 
     async def test_extract_from_group_id_forum(self):
         """
