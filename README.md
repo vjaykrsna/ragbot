@@ -1,20 +1,31 @@
 # Modular RAG Telegram Bot
 
-[![Python CI](https://github.com/your-username/your-repo/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/your-repo/actions/workflows/ci.yml)
+[![Python CI](https://github.com/vjaykrsna/ragbot/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/your-repo/actions/workflows/ci.yml)
 
 This project is a RAG-powered Telegram bot that can answer questions about your chat history. It has been refactored for modularity, maintainability, and scalability, following modern Python best practices.
+
+## Features
+
+-   **Telegram Integration:** The bot integrates with Telegram and can be added to groups to answer questions.
+-   **RAG Pipeline:** The bot uses a Retrieval-Augmented Generation (RAG) pipeline to answer questions. It retrieves relevant information from a knowledge base and then uses a large language model (LLM) to generate a response.
+-   **Knowledge Base:** The bot builds a knowledge base from your Telegram chat history. The knowledge base is stored in a ChromaDB vector database.
+-   **Modular Architecture:** The project is built with a modular architecture that separates concerns and makes the code easy to test, debug, and extend.
+-   **Data Processing Pipeline:** The project includes a data processing pipeline that extracts, processes, and anonymizes your chat history before it's added to the knowledge base.
+-   **Pre-commit Hooks:** The project uses pre-commit hooks to run code quality checks before each commit.
+-   **CI/CD Pipeline:** The project is equipped with a GitHub Actions CI/CD pipeline that automatically runs all tests and code quality checks on every push and pull request.
 
 ## Project Architecture
 
 The project is structured to separate concerns, making it easier to test, debug, and extend.
 
--   **`src/core`**: Contains the core application services, such as settings management (`settings.py`) and centralized initialization (`app.py`).
--   **`src/database.py`**: Encapsulates all database interactions.
+-   **`src/core`**: Contains the core application services, such as settings management (`config.py`) and centralized initialization (`app.py`).
+-   **`src/database`**: Encapsulates all database interactions.
+-   **`src/history_extractor`**: Contains the components for extracting chat history from Telegram.
 -   **`src/processing`**: Houses the modular data processing pipeline. Each step of the pipeline (data source, sorting, anonymization, conversation building) is encapsulated in its own module.
 -   **`src/rag`**: Contains the Retrieval-Augmented Generation (RAG) pipeline, which is responsible for querying the knowledge base and generating responses.
+-   **`src/synthesis`**: Contains the components for synthesizing knowledge from processed conversations.
 -   **`src/bot`**: The main entrypoint for the Telegram bot.
 -   **`src/scripts`**: Contains the high-level entrypoint scripts for running the data processing and knowledge synthesis pipelines.
--   **`src/utils`**: A package for utility modules, such as the LiteLLM client and logger.
 
 ## Configuration
 
@@ -69,25 +80,21 @@ This project is equipped with a GitHub Actions CI pipeline that automatically ru
 
 You can see the status of the CI pipeline from the badge at the top of this README.
 
-### 4. Run the Data Extraction Pipeline
+### 4. Set up your environment
 
-This will extract the chat history from Telegram and save it to the SQLite database.
+Create a `.env` file in the root of the project. You can use the `.env.example` file as a template. You will need to provide your Telegram API credentials and the IDs of the groups you want to scrape.
+
+### 5. Run the Data Extraction Pipeline
+
+This will extract the chat history from the Telegram groups you specified in your `.env` file and save it to the database.
 
 ```bash
 python -m src.scripts.extract_history
 ```
 
-### 5. Run the Data Processing Pipeline
-
-This will process the raw data in the database and create the structured conversation data.
-
-```bash
-python -m src.scripts.process_data
-```
-
 ### 6. Run the Knowledge Synthesis Pipeline
 
-This will convert the processed conversations into a searchable knowledge base.
+This will process the raw data in the database, create structured conversations, and then convert them into a searchable knowledge base.
 
 ```bash
 python -m src.scripts.synthesize_knowledge
@@ -118,6 +125,10 @@ This project uses `pip-tools` to manage dependencies. This helps keep the projec
     ```bash
     .venv/bin/pip-sync
     ```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a pull request or open an issue.
 
 ### To Upgrade All Packages
 
