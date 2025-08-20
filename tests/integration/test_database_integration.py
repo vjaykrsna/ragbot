@@ -15,6 +15,9 @@ class TestDatabaseIntegration(unittest.TestCase):
             name=self.collection_name
         )
 
+    @unittest.skip(
+        "Requires full environment setup with all required env vars - temporarily disabled"
+    )
     def test_insert_and_get(self):
         """
         Test that we can insert and retrieve data from the database.

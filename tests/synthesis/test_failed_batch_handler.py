@@ -13,8 +13,9 @@ class TestFailedBatchHandler(unittest.TestCase):
     def test_save_failed_batch(self):
         """Test saving a failed batch."""
         m_open = mock_open()
-        with patch("builtins.open", m_open), patch(
-            "src.synthesis.failed_batch_handler.os.makedirs"
+        with (
+            patch("builtins.open", m_open),
+            patch("src.synthesis.failed_batch_handler.os.makedirs"),
         ):
             self.failed_batch_handler.save_failed_batch(["conv1"], "error", "response")
             handle = m_open()
