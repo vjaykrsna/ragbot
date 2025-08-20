@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from src.core.app import AppContext
@@ -30,7 +31,7 @@ class Storage:
             messages: A list of messages to save.
         """
         db = self.app_context.db
-        ingestion_ts = self.app_context.settings.get("ingestion_timestamp")
+        ingestion_ts = datetime.now(timezone.utc).isoformat()
         for msg in messages:
             msg["source_name"] = chat_title
             msg["source_group_id"] = msg.get("group_id")
