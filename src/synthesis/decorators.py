@@ -20,7 +20,15 @@ def retry_with_backoff(
     initial_wait: int = 5,
     backoff_factor: int = 2,
 ):
-    """A decorator to retry a function with exponential backoff."""
+    """
+    A decorator to retry a function with exponential backoff.
+
+    Args:
+        func: The function to retry.
+        max_retries: The maximum number of retries.
+        initial_wait: The initial wait time in seconds.
+        backoff_factor: The factor by which to increase the wait time on each retry.
+    """
 
     @wraps(func)
     def wrapper(*args, **kwargs):

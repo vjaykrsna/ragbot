@@ -22,6 +22,16 @@ class NuggetStore:
     def store_nuggets_batch(
         self, collection: Collection, nuggets_with_embeddings: List[Dict[str, Any]]
     ) -> int:
+        """
+        Stores a batch of nuggets with embeddings in the database.
+
+        Args:
+            collection: The ChromaDB collection to store the nuggets in.
+            nuggets_with_embeddings: A list of nuggets with embeddings.
+
+        Returns:
+            The number of nuggets stored.
+        """
         if not nuggets_with_embeddings:
             return 0
 

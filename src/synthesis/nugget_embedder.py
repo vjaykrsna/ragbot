@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 class NuggetEmbedder:
     """
     Handles the embedding of knowledge nuggets.
+
+    Args:
+        settings: The application settings.
+        limiter: The rate limiter.
     """
 
     def __init__(self, settings: AppSettings, limiter: Limiter):
@@ -26,6 +30,16 @@ class NuggetEmbedder:
     def embed_nuggets_batch(
         self, nuggets: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
+        """
+        Embeds a batch of knowledge nuggets.
+
+        Args:
+            nuggets: A list of nuggets to embed.
+
+        Returns:
+            A list of nuggets with embeddings.
+        """
+
         @self.limiter.as_decorator()
         def _decorated_embedding():
             valid_nuggets = [
