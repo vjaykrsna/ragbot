@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sqlite3
 
 from telethon.sync import TelegramClient
 from tqdm.asyncio import tqdm
@@ -18,15 +19,57 @@ async def main():
 
     # Use project root to store session files so they are persistent across runs
     session_path = os.path.join(settings.paths.root_dir, settings.telegram.session_name)
-    client = TelegramClient(
-        session_path, settings.telegram.api_id, settings.telegram.api_hash
-    )
+
+    # Handle session file compatibility issues during client initialization
+    try:
+        client = TelegramClient(
+            session_path, settings.telegram.api_id, settings.telegram.api_hash
+        )
+    except sqlite3.OperationalError as e:
+        if "no such column: version" in str(e):
+            logging.warning(
+                "Session file incompatible during initialization. Creating a new one..."
+            )
+            # Remove the incompatible session file
+            session_files = [session_path, f"{session_path}.session"]
+            for session_file in session_files:
+                if os.path.exists(session_file):
+                    os.remove(session_file)
+                    logging.info(f"Removed incompatible session file: {session_file}")
+
+            # Create a new client with the same parameters
+            client = TelegramClient(
+                session_path, settings.telegram.api_id, settings.telegram.api_hash
+            )
+        else:
+            raise
 
     os.makedirs(settings.paths.raw_data_dir, exist_ok=True)
 
-    await client.start(
-        phone=settings.telegram.phone, password=settings.telegram.password
-    )
+    # Handle session file compatibility issues during start
+    try:
+        await client.start(
+            phone=settings.telegram.phone, password=settings.telegram.password
+        )
+    except sqlite3.OperationalError as e:
+        if "no such column: version" in str(e):
+            logging.warning("Session file incompatible. Creating a new one...")
+            # Remove the incompatible session file
+            session_files = [session_path, f"{session_path}.session"]
+            for session_file in session_files:
+                if os.path.exists(session_file):
+                    os.remove(session_file)
+                    logging.info(f"Removed incompatible session file: {session_file}")
+
+            # Create a new client with the same parameters
+            client = TelegramClient(
+                session_path, settings.telegram.api_id, settings.telegram.api_hash
+            )
+            await client.start(
+                phone=settings.telegram.phone, password=settings.telegram.password
+            )
+        else:
+            raise
 
     me = await client.get_me()
     logging.info(f"👤 Logged in as: {me.first_name} (@{me.username})")
@@ -77,6 +120,10 @@ async def main():
                 # Process this group with progress tracking
                 await extractor.extract_from_group_id(gid, last_msg_ids)
 
+                # Save progress after each group to ensure we don't lose progress
+                storage.save_last_msg_ids(last_msg_ids)
+                logging.info(f"💾 Saved progress for group '{group_name}'")
+
                 overall_pbar.update(1)
                 overall_pbar.set_postfix_str(f"✅ {group_name}")
 
@@ -86,8 +133,6 @@ async def main():
                 )
                 overall_pbar.update(1)
                 overall_pbar.set_postfix_str(f"❌ {group_name}")
-
-    storage.save_last_msg_ids(last_msg_ids)
 
     await client.disconnect()
     logging.info("\n🎉 Extraction complete. Client disconnected.")

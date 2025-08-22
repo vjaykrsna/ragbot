@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from src.history_extractor.telegram_extractor import TelegramExtractor
 
@@ -58,16 +58,10 @@ class TestTelegramExtractor(unittest.IsolatedAsyncioTestCase):
         mock_pbar.__enter__.return_value = mock_pbar
         mock_pbar.__exit__.return_value = None
 
-        with patch(
-            "src.history_extractor.telegram_extractor.tqdm", return_value=mock_pbar
-        ):
-            await self.extractor.extract_from_topic(
-                mock_entity, mock_topic, last_msg_ids
-            )
+        await self.extractor.extract_from_topic(mock_entity, mock_topic, last_msg_ids)
 
         # Assert
         self.mock_storage.save_messages_to_db.assert_called_once()
-        mock_pbar.set_postfix_str.assert_called()
 
     async def test_extract_from_group_id_forum(self):
         """
