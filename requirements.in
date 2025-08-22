@@ -2,7 +2,8 @@ chromadb
 litellm
 litellm[proxy]
 python-dotenv
-Telethon
+Pyrogram
+TgCrypto
 tqdm
 structlog
 rich

@@ -37,3 +37,4 @@ __pycache__/
 # Database files
 *.sqlite
 .coverage
+QWEN.md

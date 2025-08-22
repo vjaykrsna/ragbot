@@ -43,8 +43,6 @@ class Database:
                 topic_title TEXT,
                 source_name TEXT,
                 source_group_id INTEGER,
-                source_topic_id INTEGER,
-                source_saved_file TEXT,
                 ingestion_timestamp TEXT
             )
             """
@@ -54,7 +52,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS polls (
                 message_id INTEGER PRIMARY KEY,
                 question TEXT,
-                total_voters INTEGER,
+                total_voter_count INTEGER,
                 is_quiz BOOLEAN,
                 is_anonymous BOOLEAN
             )
@@ -91,9 +89,8 @@ class Database:
             INSERT OR REPLACE INTO messages (
                 id, date, sender_id, message_type, content, extra_data,
                 reply_to_msg_id, topic_id, topic_title, source_name,
-                source_group_id, source_topic_id, source_saved_file,
-                ingestion_timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source_group_id, ingestion_timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 msg["id"],
@@ -107,8 +104,6 @@ class Database:
                 msg["topic_title"],
                 msg["source_name"],
                 msg["source_group_id"],
-                msg["source_topic_id"],
-                msg["source_saved_file"],
                 msg["ingestion_timestamp"],
             ),
         )
@@ -118,13 +113,13 @@ class Database:
         cursor.execute(
             """
             INSERT OR REPLACE INTO polls (
-                message_id, question, total_voters, is_quiz, is_anonymous
+                message_id, question, total_voter_count, is_quiz, is_anonymous
             ) VALUES (?, ?, ?, ?, ?)
             """,
             (
                 msg["id"],
                 poll_content["question"],
-                poll_content["total_voters"],
+                poll_content["total_voter_count"],
                 poll_content["is_quiz"],
                 poll_content["is_anonymous"],
             ),
@@ -139,7 +134,7 @@ class Database:
                 (
                     msg["id"],
                     option["text"],
-                    option["voters"],
+                    option["voter_count"],
                     option.get("chosen", False),
                     option.get("correct", False),
                 ),

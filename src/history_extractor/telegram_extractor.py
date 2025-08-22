@@ -3,11 +3,10 @@ import logging
 from datetime import datetime
 from typing import Any, Dict
 
-import telethon
-from telethon.errors import FloodWaitError
-from telethon.sync import TelegramClient
-from telethon.tl.functions.channels import GetForumTopicsRequest
-from tqdm.asyncio import tqdm
+from pyrogram import Client
+from pyrogram.errors import FloodWait
+from pyrogram.raw.functions.channels import GetForumTopics
+from pyrogram.raw.types import InputChannel
 
 from src.history_extractor.message_processor import get_message_details
 from src.history_extractor.storage import Storage
@@ -23,7 +22,7 @@ class TelegramExtractor:
         storage: The storage object.
     """
 
-    def __init__(self, client: TelegramClient, storage: Storage):
+    def __init__(self, client: Client, storage: Storage):
         self.client = client
         self.storage = storage
 
@@ -31,11 +30,11 @@ class TelegramExtractor:
         self, entity: Any, topic: Any, last_msg_ids: Dict[str, int]
     ) -> None:
         """
-        Extracts all new messages from a specific group topic.
+        Extracts all new messages from a specific group topic or regular group.
 
         Args:
             entity: The entity to extract messages from.
-            topic: The topic to extract messages from.
+            topic: The topic to extract messages from (for forums) or a mock topic object with id=0 for regular groups.
             last_msg_ids: A dictionary mapping topic keys to the last processed message ID.
         """
         messages = []
@@ -50,72 +49,104 @@ class TelegramExtractor:
             f"  - 📥 Extracting from topic: '{topic_title}' (ID: {topic_id}) [Since message ID > {last_id}]"
         )
 
-        iterator_kwargs = {"min_id": last_id, "reverse": True}
-        if topic_id != 0:  # 0 is the 'General' topic in non-forum groups
-            iterator_kwargs["reply_to"] = topic_id
+        # Use offset_id instead of min_id and get_chat_history instead of iter_messages
+        # Pyrogram's get_chat_history returns messages in reverse chronological order by default
+        # For topics, we need to filter messages by message_thread_id
+        start_time = datetime.now()
+        processed_count = 0
+        saved_count = 0
+        last_update_time = start_time
 
-        # Collect messages first to show progress
-        message_list = []
-        async for msg in self.client.iter_messages(entity, **iterator_kwargs):
-            if isinstance(msg, telethon.tl.types.MessageService):
+        async for msg in self.client.get_chat_history(
+            entity.id if hasattr(entity, "id") else entity, offset_id=last_id
+        ):
+            # For topics, filter by message_thread_id
+            msg_thread_id = getattr(msg, "message_thread_id", 0) or 0
+            if topic_id == 0:
+                # For general topic, include messages with no thread ID (general messages)
+                if msg_thread_id != 0:
+                    continue
+            else:
+                # For specific topics, only include messages with matching thread ID
+                if msg_thread_id != topic_id:
+                    continue
+            # Skip service messages
+            if getattr(msg, "service", False):
                 continue
-            if not msg.text and not msg.media:
+            # Skip messages without text or media
+            if not getattr(msg, "text", None) and not getattr(msg, "media", None):
                 continue
-            message_list.append(msg)
 
-        if not message_list:
+            try:
+                message_type, content, extra_data = get_message_details(msg)
+            except Exception as e:
+                logging.debug(f"Failed to process message {msg.id}: {e}")
+                processed_count += 1
+                continue
+
+            if not content:
+                processed_count += 1
+                continue
+
+            # Get sender information
+            sender_id = None
+            if hasattr(msg, "from_user") and msg.from_user:
+                sender_id = msg.from_user.id
+            elif hasattr(msg, "sender_chat") and msg.sender_chat:
+                sender_id = msg.sender_chat.id
+
+            messages.append(
+                {
+                    "id": msg.id,
+                    "date": msg.date.isoformat()
+                    if isinstance(msg.date, datetime)
+                    else datetime.fromtimestamp(msg.date).isoformat(),
+                    "sender_id": sender_id,
+                    "message_type": message_type,
+                    "content": content,
+                    "extra_data": extra_data,
+                    "reply_to_msg_id": getattr(msg, "reply_to_message_id", None),
+                    "topic_id": topic_id,
+                    "topic_title": topic_title,
+                    "source_name": entity.title
+                    if hasattr(entity, "title")
+                    else str(entity),
+                    "source_group_id": entity.id if hasattr(entity, "id") else group_id,
+                    "ingestion_timestamp": datetime.now().isoformat(),
+                }
+            )
+            max_id = max(max_id, msg.id)
+            saved_count += 1
+            processed_count += 1
+
+            # Update progress display every 100 messages or every 2 seconds
+            current_time = datetime.now()
+            elapsed_since_last_update = (
+                current_time - last_update_time
+            ).total_seconds()
+            if processed_count % 100 == 0 or elapsed_since_last_update > 2:
+                elapsed_total = (current_time - start_time).total_seconds()
+                speed = processed_count / elapsed_total if elapsed_total > 0 else 0
+                # Use \r to overwrite the same line
+                print(
+                    f"\r    💬 {topic_title}: {processed_count} messages processed, "
+                    f"{saved_count} saved, {speed:.1f} msg/sec",
+                    end="",
+                    flush=True,
+                )
+                last_update_time = current_time
+
+        if not processed_count:
             logging.info(f"    📝 No new messages in '{topic_title}'")
             return
 
-        # Process messages with enhanced progress bar
-        with tqdm(
-            total=len(message_list),
-            desc=f"    💬 {topic_title}",
-            unit="msg",
-            leave=False,
-            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}]",
-            position=1,
-        ) as pbar:
-            processed_count = 0
-            saved_count = 0
-
-            for msg in message_list:
-                try:
-                    message_type, content, extra_data = get_message_details(msg)
-                except Exception as e:
-                    logging.debug(f"Failed to process message {msg.id}: {e}")
-                    pbar.update(1)
-                    processed_count += 1
-                    continue
-
-                if not content:
-                    pbar.update(1)
-                    processed_count += 1
-                    continue
-
-                messages.append(
-                    {
-                        "id": msg.id,
-                        "date": msg.date.isoformat(),
-                        "sender_id": msg.sender_id,
-                        "message_type": message_type,
-                        "content": content,
-                        "extra_data": extra_data,
-                        "reply_to_msg_id": msg.reply_to_msg_id,
-                        "topic_id": topic_id,
-                        "topic_title": topic_title,
-                    }
-                )
-                max_id = max(max_id, msg.id)
-                saved_count += 1
-                processed_count += 1
-
-                # Update progress bar with current counts
-                pbar.set_postfix_str(f"📝 {saved_count} saved")
-                pbar.update(1)
-
-            # Final status update
-            pbar.set_postfix_str(f"✅ {saved_count}/{processed_count} saved")
+        # Final status update
+        elapsed_total = (datetime.now() - start_time).total_seconds()
+        speed = processed_count / elapsed_total if elapsed_total > 0 else 0
+        print(
+            f"\r    ✅ {topic_title}: {processed_count} messages processed, "
+            f"{saved_count} saved, {speed:.1f} msg/sec"
+        )
 
         if messages:
             full_title = f"{entity.title}_{topic_title}"
@@ -133,58 +164,78 @@ class TelegramExtractor:
             last_msg_ids: A dictionary mapping topic keys to the last processed message ID.
         """
         try:
-            entity = await self.client.get_entity(group_id)
+            entity = await self.client.get_chat(group_id)
             logging.info(f"\nProcessing Group: {entity.title} (ID: {group_id})")
-            if entity.forum:
-                try:
-                    topics_result = await self.client(
-                        GetForumTopicsRequest(
-                            channel=entity,
-                            offset_date=datetime.now(),
-                            offset_id=0,
-                            offset_topic=0,
-                            limit=100,
-                        )
+
+            # Try to get forum topics regardless of is_forum flag
+            # This handles cases where is_forum is incorrectly reported as False
+            topics = []
+            try:
+                # Create InputChannel object for Pyrogram
+                input_channel = InputChannel(
+                    channel_id=entity.id,
+                    access_hash=getattr(entity, "access_hash", 0),
+                )
+
+                # Use Pyrogram's raw function to get forum topics
+                topics_result = await self.client.invoke(
+                    GetForumTopics(
+                        channel=input_channel,
+                        offset_date=int(datetime.now().timestamp()),
+                        offset_id=0,
+                        offset_topic=0,
+                        limit=100,
                     )
-                    if topics_result and hasattr(topics_result, "topics"):
-                        topics = topics_result.topics
-                        logging.info(f"📋 Found {len(topics)} topics:")
+                )
+                if topics_result and hasattr(topics_result, "topics"):
+                    topics = topics_result.topics
+            except Exception as e:
+                # If we can't get topics, it might be a regular group or there was an error
+                logging.debug(
+                    f"  - Could not fetch topics (might be regular group): {e}"
+                )
 
-                        # Display topic list upfront
-                        for i, topic in enumerate(topics, 1):
-                            topic_title = normalize_title(
-                                getattr(topic, "title", "General")
-                            )
-                            logging.info(f"  {i:2d}. {topic_title}")
+            if topics:
+                logging.info(f"📋 Found {len(topics)} topics:")
 
-                        logging.info(
-                            f"🔄 Starting extraction of {len(topics)} topics..."
-                        )
+                # Display topic list upfront
+                for i, topic in enumerate(topics, 1):
+                    topic_title = normalize_title(getattr(topic, "title", "General"))
+                    logging.info(f"  {i:2d}. {topic_title}")
 
-                        # Process topics with progress tracking
-                        for i, topic in enumerate(topics, 1):
-                            topic_title = normalize_title(
-                                getattr(topic, "title", "General")
-                            )
-                            logging.info(
-                                f"📊 Processing topic {i}/{len(topics)}: '{topic_title}'"
-                            )
-                            await self.extract_from_topic(entity, topic, last_msg_ids)
-                    else:
-                        logging.info("  - Forum group with no topics found. Skipping.")
-                except Exception as e:
-                    logging.exception(
-                        f"  - ❌ Error fetching topics for forum '{entity.title}': {e}"
+                logging.info(f"🔄 Starting extraction of {len(topics)} topics...")
+
+                # Process topics with progress tracking
+                for i, topic in enumerate(topics, 1):
+                    topic_title = normalize_title(getattr(topic, "title", "General"))
+                    logging.info(
+                        f"📊 Processing topic {i}/{len(topics)}: '{topic_title}'"
                     )
+                    await self.extract_from_topic(entity, topic, last_msg_ids)
             else:
-                logging.info("  - This is a regular group. Extracting from main chat.")
-                general_topic = type("obj", (object,), {"id": 0, "title": "General"})()
-                await self.extract_from_topic(entity, general_topic, last_msg_ids)
-        except FloodWaitError as fwe:
+                # Check if it's marked as a forum but has no topics, or if it's a regular group
+                is_forum = getattr(entity, "is_forum", False)
+                if is_forum:
+                    logging.info("  - Forum group with no topics found. Skipping.")
+                else:
+                    logging.info(
+                        "  - This is a regular group. Extracting from main chat."
+                    )
+                    general_topic = type(
+                        "obj", (object,), {"id": 0, "title": "General"}
+                    )()
+                    await self.extract_from_topic(entity, general_topic, last_msg_ids)
+        except FloodWait as fwe:
             logging.warning(
-                f"Flood wait error for group {group_id}. Waiting for {fwe.seconds} seconds."
+                f"Flood wait error for group {group_id}. Waiting for {fwe.value} seconds."
             )
-            await asyncio.sleep(fwe.seconds)
+            # Show a message every 30 seconds while waiting
+            wait_time = fwe.value
+            while wait_time > 0:
+                if wait_time % 30 == 0 or wait_time < 30:
+                    logging.info(f"Waiting for {wait_time} more seconds...")
+                await asyncio.sleep(min(30, wait_time))
+                wait_time -= 30
             await self.extract_from_group_id(group_id, last_msg_ids)  # Retry
         except Exception as e:
             logging.exception(f"❌ Error processing group {group_id}: {e}")
