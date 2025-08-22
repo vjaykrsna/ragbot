@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Python files
+*.pyc
+
 # IDEs and editors
 .crush/
 .idea/
