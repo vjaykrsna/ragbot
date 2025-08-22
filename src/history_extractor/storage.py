@@ -34,7 +34,11 @@ class Storage:
         ingestion_ts = datetime.now(timezone.utc).isoformat()
         for msg in messages:
             msg["source_name"] = chat_title
-            msg["source_group_id"] = msg.get("group_id")
+            # Ensure source_group_id is set correctly
+            if "source_group_id" not in msg or msg["source_group_id"] is None:
+                msg["source_group_id"] = msg.get("source_group_id") or msg.get(
+                    "group_id"
+                )
             msg["source_topic_id"] = topic_id
             msg["source_saved_file"] = None  # No longer saving to individual files
             msg["ingestion_timestamp"] = ingestion_ts

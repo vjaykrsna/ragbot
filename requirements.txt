@@ -261,7 +261,7 @@ protobuf==6.32.0
     #   onnxruntime
     #   opentelemetry-proto
 pyaes==1.6.1
-    # via telethon
+    # via pyrogram
 pyasn1==0.6.1
     # via
     #   pyasn1-modules
@@ -299,6 +299,10 @@ pyproject-hooks==1.2.0
     # via build
 pyrate-limiter==3.9.0
     # via -r requirements.in
+pyrogram==2.0.106
+    # via -r requirements.in
+pysocks==1.7.1
+    # via pyrogram
 python-dateutil==2.9.0.post0
     # via
     #   botocore
@@ -358,9 +362,7 @@ rpds-py==0.27.0
 rq==2.5.0
     # via litellm
 rsa==4.9.1
-    # via
-    #   google-auth
-    #   telethon
+    # via google-auth
 s3transfer==0.11.3
     # via boto3
 shellingham==1.5.4
@@ -385,10 +387,10 @@ structlog==25.4.0
     # via -r requirements.in
 sympy==1.14.0
     # via onnxruntime
-telethon==1.40.0
-    # via -r requirements.in
 tenacity==9.1.2
     # via chromadb
+tgcrypto==1.2.5
+    # via -r requirements.in
 tiktoken==0.11.0
     # via litellm
 tokenizers==0.21.4

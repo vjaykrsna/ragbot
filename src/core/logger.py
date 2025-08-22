@@ -67,7 +67,6 @@ def setup_logging(settings: AppSettings) -> None:
 
     # Quiet noisy third-party loggers
     noisy_loggers = [
-        "telethon",
         "asyncio",
         "urllib3",
         "httpx",

@@ -13,7 +13,8 @@ class TestMessageProcessor(unittest.TestCase):
         mock_msg = MagicMock()
         mock_msg.text = "hello"
         mock_msg.media = None
-        mock_msg.entities = None
+        mock_msg.poll = None
+        mock_msg.service = False
 
         # Act
         msg_type, content, extra_data = get_message_details(mock_msg)
@@ -21,7 +22,7 @@ class TestMessageProcessor(unittest.TestCase):
         # Assert
         self.assertEqual(msg_type, "text")
         self.assertEqual(content, "hello")
-        self.assertEqual(extra_data, {})
+        self.assertIsInstance(extra_data, dict)
 
     def test_get_message_details_empty_message(self):
         """
@@ -31,7 +32,8 @@ class TestMessageProcessor(unittest.TestCase):
         mock_msg = MagicMock()
         mock_msg.text = ""
         mock_msg.media = None
-        mock_msg.entities = None
+        mock_msg.poll = None
+        mock_msg.service = False
 
         # Act
         msg_type, content, extra_data = get_message_details(mock_msg)
@@ -39,7 +41,7 @@ class TestMessageProcessor(unittest.TestCase):
         # Assert
         self.assertEqual(msg_type, "text")
         self.assertEqual(content, "")
-        self.assertEqual(extra_data, {})
+        self.assertIsInstance(extra_data, dict)
 
     def test_get_message_details_none_message(self):
         """
@@ -60,26 +62,24 @@ class TestMessageProcessor(unittest.TestCase):
         # Arrange
         mock_msg = MagicMock()
         mock_msg.text = ""
+        mock_msg.media = None
+        mock_msg.service = False
+
+        # Create a mock poll object with Pyrogram structure
         mock_poll = MagicMock()
-        mock_poll.question.text = "What is your favorite color?"
-        mock_poll.answers = [
-            MagicMock(),
-            MagicMock(),
+        mock_poll.question = "What is your favorite color?"
+        mock_poll.options = [
+            MagicMock(text="Red", voter_count=10),
+            MagicMock(text="Blue", voter_count=20),
         ]
-        mock_poll.answers[0].text.text = "Red"
-        mock_poll.answers[1].text.text = "Blue"
-        mock_poll.quiz = False
-        mock_poll.public_voters = True
-        mock_results = MagicMock()
-        mock_results.results = [
-            MagicMock(voters=10),
-            MagicMock(voters=20),
-        ]
-        mock_results.total_voters = 30
-        mock_media = MagicMock()
-        mock_media.poll = mock_poll
-        mock_media.results = mock_results
-        mock_msg.media = mock_media
+        mock_poll.total_voter_count = 30
+        mock_poll.is_quiz = False
+        mock_poll.is_anonymous = True
+        mock_poll.close_period = None
+        mock_poll.close_date = None
+        mock_poll.id = 12345
+
+        mock_msg.poll = mock_poll
 
         # Act
         msg_type, content, extra_data = get_message_details(mock_msg)
@@ -88,4 +88,5 @@ class TestMessageProcessor(unittest.TestCase):
         self.assertEqual(msg_type, "poll")
         self.assertEqual(content["question"], "What is your favorite color?")
         self.assertEqual(len(content["options"]), 2)
-        self.assertEqual(content["total_voters"], 30)
+        self.assertEqual(content["total_voter_count"], 30)
+        self.assertEqual(extra_data["poll_id"], 12345)

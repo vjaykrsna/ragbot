@@ -47,6 +47,7 @@ class ActiveConversation:
         self.id_set = {first_msg["id"]}
         self.start = isoparse(first_msg["date"])
         self.last = self.start
+        # Use topic_id for consistency
         self.topic_id = first_msg.get("topic_id")
         self.topic_title = first_msg.get("topic_title")
 
@@ -57,6 +58,7 @@ class ActiveConversation:
         msg_dt = isoparse(msg["date"])
         within_gap = (msg_dt - self.last).total_seconds() < time_threshold
         within_window = (msg_dt - self.start).total_seconds() < session_window
+        # Use topic_id for consistency
         same_topic = self.topic_id == msg.get("topic_id")
 
         if within_window and same_topic and within_gap:
