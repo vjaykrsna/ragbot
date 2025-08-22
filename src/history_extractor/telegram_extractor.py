@@ -7,7 +7,6 @@ import telethon
 from telethon.errors import FloodWaitError
 from telethon.sync import TelegramClient
 from telethon.tl.functions.channels import GetForumTopicsRequest
-from tqdm.asyncio import tqdm
 
 from src.history_extractor.message_processor import get_message_details
 from src.history_extractor.storage import Storage
@@ -38,7 +37,6 @@ class TelegramExtractor:
             topic: The topic to extract messages from.
             last_msg_ids: A dictionary mapping topic keys to the last processed message ID.
         """
-        messages = []
         group_id = entity.id
         topic_id = topic.id
         topic_title = normalize_title(getattr(topic, "title", "General"))
@@ -67,60 +65,78 @@ class TelegramExtractor:
             logging.info(f"    📝 No new messages in '{topic_title}'")
             return
 
-        # Process messages with enhanced progress bar
-        with tqdm(
-            total=len(message_list),
-            desc=f"    💬 {topic_title}",
-            unit="msg",
-            leave=False,
-            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}]",
-            position=1,
-        ) as pbar:
-            processed_count = 0
-            saved_count = 0
+        # Process messages with simplified progress updates
+        batch_size = 100  # Process messages in batches for better performance
+        save_interval = 500  # Save progress every 500 messages
+        message_batch = []
+        messages_processed_since_save = 0
+        total_saved = 0
+        start_time = asyncio.get_event_loop().time()
 
-            for msg in message_list:
-                try:
-                    message_type, content, extra_data = get_message_details(msg)
-                except Exception as e:
-                    logging.debug(f"Failed to process message {msg.id}: {e}")
-                    pbar.update(1)
-                    processed_count += 1
-                    continue
+        for msg in message_list:
+            try:
+                message_type, content, extra_data = get_message_details(msg)
+            except Exception as e:
+                logging.debug(f"Failed to process message {msg.id}: {e}")
+                continue
 
-                if not content:
-                    pbar.update(1)
-                    processed_count += 1
-                    continue
+            if not content:
+                continue
 
-                messages.append(
-                    {
-                        "id": msg.id,
-                        "date": msg.date.isoformat(),
-                        "sender_id": msg.sender_id,
-                        "message_type": message_type,
-                        "content": content,
-                        "extra_data": extra_data,
-                        "reply_to_msg_id": msg.reply_to_msg_id,
-                        "topic_id": topic_id,
-                        "topic_title": topic_title,
-                    }
+            message_batch.append(
+                {
+                    "id": msg.id,
+                    "date": msg.date.isoformat(),
+                    "sender_id": msg.sender_id,
+                    "message_type": message_type,
+                    "content": content,
+                    "extra_data": extra_data,
+                    "reply_to_msg_id": msg.reply_to_msg_id,
+                    "topic_id": topic_id,
+                    "topic_title": topic_title,
+                }
+            )
+            max_id = max(max_id, msg.id)
+            total_saved += 1
+            messages_processed_since_save += 1
+
+            # When batch is full, save to database
+            if len(message_batch) >= batch_size:
+                if message_batch:
+                    full_title = f"{entity.title}_{topic_title}"
+                    self.storage.save_messages_to_db(
+                        full_title, topic_id, message_batch
+                    )
+                    message_batch = []  # Clear the batch
+
+            # Save progress every save_interval messages
+            if messages_processed_since_save >= save_interval:
+                if total_saved > 0:
+                    last_msg_ids[last_id_key] = max_id
+                    self.storage.save_last_msg_ids(last_msg_ids)
+                    messages_processed_since_save = 0
+                logging.info(
+                    f"    💾 Saved progress for topic '{topic_title}' at message ID {max_id}"
                 )
-                max_id = max(max_id, msg.id)
-                saved_count += 1
-                processed_count += 1
 
-                # Update progress bar with current counts
-                pbar.set_postfix_str(f"📝 {saved_count} saved")
-                pbar.update(1)
-
-            # Final status update
-            pbar.set_postfix_str(f"✅ {saved_count}/{processed_count} saved")
-
-        if messages:
+        # Save any remaining messages in the batch
+        if message_batch:
             full_title = f"{entity.title}_{topic_title}"
-            self.storage.save_messages_to_db(full_title, topic_id, messages)
+            self.storage.save_messages_to_db(full_title, topic_id, message_batch)
+
+        # Update last message ID
+        if total_saved > 0:
             last_msg_ids[last_id_key] = max_id
+
+        # Calculate and display extraction speed
+        elapsed_time = asyncio.get_event_loop().time() - start_time
+        if elapsed_time > 0:
+            speed = total_saved / elapsed_time
+            logging.info(
+                f"    ✅ '{topic_title}': {total_saved} messages extracted ({speed:.1f} msg/sec)"
+            )
+        else:
+            logging.info(f"    ✅ '{topic_title}': {total_saved} messages extracted")
 
     async def extract_from_group_id(
         self, group_id: int, last_msg_ids: Dict[str, int]

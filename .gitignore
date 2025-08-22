@@ -12,6 +12,7 @@ __pycache__/
 .crush/
 .idea/
 .vscode/
+QWEN.md
 
 # Databases and Session Files
 *.session
@@ -33,7 +34,7 @@ __pycache__/
 
 # Coverage data
 .coverage
+htmlcov/
 
 # Database files
 *.sqlite
-.coverage
