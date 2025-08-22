@@ -2,9 +2,8 @@ import asyncio
 import logging
 import os
 import sqlite3
-import sys
 
-from telethon.sync import TelegramClient
+from pyrogram import Client
 
 from src.core.app import initialize_app
 from src.history_extractor.storage import Storage
@@ -12,17 +11,19 @@ from src.history_extractor.telegram_extractor import TelegramExtractor
 
 
 async def main():
-    # Orchestrates the Telegram message extraction process.
+    """Main entry point for the history extraction script."""
     # Initialize the application context
     app_context = initialize_app()
     settings = app_context.settings
+
+    os.makedirs(settings.paths.raw_data_dir, exist_ok=True)
 
     # Use project root to store session files so they are persistent across runs
     session_path = os.path.join(settings.paths.root_dir, settings.telegram.session_name)
 
     # Handle session file compatibility issues during client initialization
     try:
-        client = TelegramClient(
+        client = Client(
             session_path, settings.telegram.api_id, settings.telegram.api_hash
         )
     except sqlite3.OperationalError as e:
@@ -38,95 +39,69 @@ async def main():
                     logging.info(f"Removed incompatible session file: {session_file}")
 
             # Create a new client with the same parameters
-            client = TelegramClient(
+            client = Client(
                 session_path, settings.telegram.api_id, settings.telegram.api_hash
             )
         else:
             raise
 
-    os.makedirs(settings.paths.raw_data_dir, exist_ok=True)
-
-    # Handle session file compatibility issues during start
-    try:
-        await client.start(
-            phone=settings.telegram.phone, password=settings.telegram.password
+    # Start the Pyrogram client
+    async with client:
+        # Get the current user
+        me = await client.get_me()
+        logging.info(
+            f'👤 Logged in as: {me.first_name} (@{getattr(me, "username", "N/A")})'
         )
-    except sqlite3.OperationalError as e:
-        if "no such column: version" in str(e):
-            logging.warning("Session file incompatible. Creating a new one...")
-            # Remove the incompatible session file
-            session_files = [session_path, f"{session_path}.session"]
-            for session_file in session_files:
-                if os.path.exists(session_file):
-                    os.remove(session_file)
-                    logging.info(f"Removed incompatible session file: {session_file}")
 
-            # Create a new client with the same parameters
-            client = TelegramClient(
-                session_path, settings.telegram.api_id, settings.telegram.api_hash
+        if not settings.telegram.group_ids:
+            logging.warning(
+                "⚠️ No GROUP_IDS found in .env file. Please add the group/channel IDs to scrape."
             )
-            await client.start(
-                phone=settings.telegram.phone, password=settings.telegram.password
-            )
-        else:
-            raise
+            return
 
-    me = await client.get_me()
-    print(f"👤 Logged in as: {me.first_name} (@{me.username})")
+        storage = Storage(app_context)
+        extractor = TelegramExtractor(client, storage)
 
-    if not settings.telegram.group_ids:
-        print(
-            "⚠️ No GROUP_IDS found in .env file. Please add the group/channel IDs to scrape."
-        )
-        return
+        group_ids = settings.telegram.group_ids
+        last_msg_ids = storage.load_last_msg_ids()
 
-    storage = Storage(app_context)
-    extractor = TelegramExtractor(client, storage)
+        # Display group list upfront
+        logging.info(f"🏢 Groups to process ({len(group_ids)} total):")
+        for i, gid in enumerate(group_ids, 1):
+            try:
+                entity = await client.get_chat(gid)
+                group_name = getattr(entity, "title", f"Group {gid}")
+                logging.info(f"  {i:2d}. {group_name}")
+            except Exception:
+                logging.info(f"  {i:2d}. Group {gid} (name unavailable)")
+                group_name = f"Group {gid}"  # Set default name for error handling
 
-    group_ids = settings.telegram.group_ids
-    last_msg_ids = storage.load_last_msg_ids()
+        logging.info(f"🚀 Starting extraction of {len(group_ids)} groups...")
 
-    # Print debug information
-    print(f"🏢 Starting extraction of {len(group_ids)} groups...")
-    print(f"📊 Last message IDs: {last_msg_ids}")
-    print(f"⚙️  Concurrent groups: {settings.telegram.extraction.concurrent_groups}")
-    print(
-        f"⚙️  Messages per request: {settings.telegram.extraction.messages_per_request}"
-    )
-    print(f"⚙️  Buffer size: {settings.telegram.extraction.buffer_size}")
-    print(f"⚙️  UI update interval: {settings.telegram.extraction.ui_update_interval}")
+        # Process each group
+        for i, gid in enumerate(group_ids, 1):
+            group_name = f"Group {gid}"  # Default name
+            try:
+                # Get group info for better display
+                entity = await client.get_chat(gid)
+                group_name = getattr(entity, "title", f"Group {gid}")
+                logging.info(
+                    f'📂 Processing group {i}/{len(group_ids)}: "{group_name}"'
+                )
 
-    # Process groups sequentially (one at a time) to avoid issues
-    total_messages_extracted = 0
-    for i, gid in enumerate(group_ids, 1):
-        try:
-            # Get group info for better display
-            entity = await client.get_entity(gid)
-            group_name = getattr(entity, "title", f"Group {gid}")
-            sys.stdout.write(f"\rProcessing group {i}/{len(group_ids)}: '{group_name}'")
-            sys.stdout.flush()
+                # Process this group
+                await extractor.extract_from_group_id(gid, last_msg_ids)
 
-            # Process this group
-            count = await extractor.extract_from_group_id(gid, last_msg_ids)
+                logging.info(f'✅ Completed group {i}/{len(group_ids)}: "{group_name}"')
 
-            # Save progress after each group to ensure we don't lose progress
-            storage.save_last_msg_ids(last_msg_ids)
-            print(f"\n💾 Saved progress for group '{group_name}'")
+            except Exception as e:
+                logging.error(
+                    f'❌ Failed to process group {i}/{len(group_ids)} "{group_name}": {e}'
+                )
 
-            total_messages_extracted += count
-        except Exception as e:
-            logging.error(
-                f"❌ Failed to process group {i}/{len(group_ids)} '{group_name}': {e}"
-            )
-
-    await client.disconnect()
-    # Ensure any remaining messages in the buffer are saved
-    storage.close()
-    print(
-        f"\n🎉 Extraction complete. Total messages extracted: {total_messages_extracted}"
-    )
+        storage.save_last_msg_ids(last_msg_ids)
+        logging.info("\n🎉 Extraction complete.")
 
 
 if __name__ == "__main__":
-    # Using asyncio.run() is the modern way to run an async main function.
     asyncio.run(main())

@@ -1,13 +1,30 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from src.history_extractor.telegram_extractor import TelegramExtractor
 
 
+class MockAsyncIterator:
+    """Mock async iterator for testing."""
+
+    def __init__(self, items):
+        self.items = items
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.items:
+            return self.items.pop(0)
+        raise StopAsyncIteration
+
+
 class TestTelegramExtractor(unittest.TestCase):
+    """Test cases for the TelegramExtractor class."""
+
     def setUp(self):
-        """Set up test fixtures before each test method."""
+        """Set up test fixtures."""
         self.mock_client = MagicMock()
         self.mock_storage = MagicMock()
         self.extractor = TelegramExtractor(self.mock_client, self.mock_storage)
@@ -17,69 +34,39 @@ class TestTelegramExtractor(unittest.TestCase):
         self.extractor.settings.ui_update_interval = 5
 
     def test_extract_from_topic(self):
-        """
-        Test extracting messages from a single topic.
-        """
+        """Test extracting messages from a topic."""
         # Arrange
         mock_entity = MagicMock()
         mock_entity.id = 123
         mock_entity.title = "Test Group"
+
         mock_topic = MagicMock()
         mock_topic.id = 456
         mock_topic.title = "Test Topic"
-        last_msg_ids = {"123_456": 0}
+
+        last_msg_ids = {}
 
         mock_msg = MagicMock()
         mock_msg.id = 1
         mock_msg.text = "hello"
-        mock_msg.media = None
-        mock_msg.entities = None
-        mock_msg.date = MagicMock()
-        mock_msg.date.isoformat.return_value = "2023-01-01T00:00:00Z"
-        mock_msg.sender_id = 789
-        mock_msg.reply_to_msg_id = None
+        mock_msg.date.isoformat.return_value = "2024-01-01T00:00:00"
+        mock_msg.from_user = None
+        mock_msg.sender_chat = None
 
-        # Create proper async iterator
-        class MockAsyncIterator:
-            def __init__(self, items):
-                self.items = items
-                self.iter = iter(self.items)
+        self.mock_client.get_chat_history.return_value = MockAsyncIterator([mock_msg])
 
-            def __aiter__(self):
-                return self
+        # Act
+        async def run_test():
+            return await self.extractor.extract_from_topic(
+                mock_entity, mock_topic, last_msg_ids
+            )
 
-            async def __anext__(self):
-                try:
-                    return next(self.iter)
-                except StopIteration:
-                    raise StopAsyncIteration
-
-        # Make iter_messages return the async iterator directly
-        self.mock_client.iter_messages = MagicMock(
-            return_value=MockAsyncIterator([mock_msg])
-        )
-
-        # Mock tqdm context manager
-        mock_pbar = MagicMock()
-        mock_pbar.__enter__.return_value = mock_pbar
-        mock_pbar.__exit__.return_value = None
-
-        with patch(
-            "src.history_extractor.telegram_extractor.get_message_details"
-        ) as mock_get_details:
-            mock_get_details.return_value = ("text", "hello", {})
-
-            # Run the async method using asyncio.run
-            async def run_test():
-                return await self.extractor.extract_from_topic(
-                    mock_entity, mock_topic, last_msg_ids
-                )
-
-            result = asyncio.run(run_test())
+        result = asyncio.run(run_test())
 
         # Assert
         self.assertEqual(result, 1)
-        self.mock_client.iter_messages.assert_called_once()
+        self.mock_client.get_chat_history.assert_called_once()
+        self.mock_storage.save_messages_to_db.assert_called_once()
 
     def test_extract_from_group_id_forum(self):
         """
@@ -91,44 +78,27 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity = MagicMock()
         mock_entity.id = 123
         mock_entity.title = "Test Forum Group"
-        mock_entity.forum = True
+        mock_entity.is_forum = True
+        self.mock_client.get_chat.return_value = mock_entity
 
         mock_topic = MagicMock()
         mock_topic.id = 456
         mock_topic.title = "Test Topic"
+        mock_topics_result = MagicMock()
+        mock_topics_result.topics = [mock_topic]
+        self.mock_client.invoke.return_value = mock_topics_result
 
-        # Mock client methods
-        self.mock_client.get_entity = AsyncMock(return_value=mock_entity)
+        self.extractor.extract_from_topic = AsyncMock(return_value=5)
 
-        # Mock the GetForumTopicsRequest
-        with patch(
-            "src.history_extractor.telegram_extractor.GetForumTopicsRequest"
-        ) as mock_request:
-            mock_request.return_value = MagicMock()
+        # Act
+        async def run_test():
+            return await self.extractor.extract_from_group_id(group_id, last_msg_ids)
 
-            # Mock the client call - this needs to be an awaitable
-            mock_topics_result = MagicMock()
-            mock_topics_result.topics = [mock_topic]
-
-            # Fix: Create a proper async function for the client call
-            async def mock_client_call(request):
-                return mock_topics_result
-
-            self.mock_client.side_effect = mock_client_call
-
-            # Mock extract_from_topic
-            self.extractor.extract_from_topic = AsyncMock(return_value=5)
-
-            # Act
-            async def run_test():
-                return await self.extractor.extract_from_group_id(
-                    group_id, last_msg_ids
-                )
-
-            result = asyncio.run(run_test())
+        result = asyncio.run(run_test())
 
         # Assert
         self.assertEqual(result, 5)
+        self.extractor.extract_from_topic.assert_awaited_once()
 
     def test_extract_from_group_id_regular(self):
         """
@@ -139,11 +109,12 @@ class TestTelegramExtractor(unittest.TestCase):
         last_msg_ids = {}
         mock_entity = MagicMock()
         mock_entity.id = 123
-        mock_entity.title = "Test Regular Group"
-        mock_entity.forum = False
+        mock_entity.is_forum = False
+        self.mock_client.get_chat.return_value = mock_entity
 
-        # Mock client methods
-        self.mock_client.get_entity = AsyncMock(return_value=mock_entity)
+        # Mock the GetForumTopics call to raise an exception (simulating a regular group)
+        self.mock_client.invoke.side_effect = Exception("Not a forum group")
+
         self.extractor.extract_from_topic = AsyncMock(return_value=3)
 
         # Act
@@ -154,3 +125,8 @@ class TestTelegramExtractor(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, 3)
+        self.extractor.extract_from_topic.assert_awaited_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

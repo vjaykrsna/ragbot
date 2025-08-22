@@ -37,7 +37,6 @@ def test_setup_logging(mock_stream_handler, mock_file_handler, mock_makedirs):
 
     # Assert that noisy loggers are quieted
     noisy_loggers = [
-        "telethon",
         "asyncio",
         "urllib3",
         "httpx",

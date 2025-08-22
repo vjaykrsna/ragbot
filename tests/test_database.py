@@ -64,8 +64,6 @@ class TestDatabase(unittest.TestCase):
             "topic_title": "General",
             "source_name": "Test Group",
             "source_group_id": 202,
-            "source_topic_id": 101,
-            "source_saved_file": None,
             "ingestion_timestamp": "2024-01-01T12:00:01",
         }
         self.db.insert_messages([message])
@@ -85,10 +83,10 @@ class TestDatabase(unittest.TestCase):
             "content": {
                 "question": "What is your favorite color?",
                 "options": [
-                    {"text": "Red", "voters": 5},
-                    {"text": "Blue", "voters": 10, "chosen": True},
+                    {"text": "Red", "voter_count": 5},
+                    {"text": "Blue", "voter_count": 10, "chosen": True},
                 ],
-                "total_voters": 15,
+                "total_voter_count": 15,
                 "is_quiz": False,
                 "is_anonymous": True,
             },
@@ -98,8 +96,6 @@ class TestDatabase(unittest.TestCase):
             "topic_title": "General",
             "source_name": "Test Group",
             "source_group_id": 202,
-            "source_topic_id": 101,
-            "source_saved_file": None,
             "ingestion_timestamp": "2024-01-01T13:00:01",
         }
         self.db.insert_messages([poll_message])
@@ -113,17 +109,25 @@ class TestDatabase(unittest.TestCase):
         # Check the polls and poll_options tables directly
         with self.db._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM polls WHERE message_id=?", (2,))
+            cursor.execute(
+                "SELECT * FROM polls WHERE message_id=? AND source_group_id=? AND topic_id=?",
+                (2, 202, 101),
+            )
             poll_data = cursor.fetchone()
             self.assertIsNotNone(poll_data)
-            self.assertEqual(poll_data[1], "What is your favorite color?")
+            self.assertEqual(
+                poll_data[3], "What is your favorite color?"
+            )  # Question is now at index 3
 
-            cursor.execute("SELECT * FROM poll_options WHERE poll_id=?", (2,))
+            cursor.execute(
+                "SELECT * FROM poll_options WHERE poll_id=? AND poll_source_group_id=? AND poll_topic_id=?",
+                (2, 202, 101),
+            )
             options_data = cursor.fetchall()
             self.assertEqual(len(options_data), 2)
-            self.assertEqual(options_data[0][2], "Red")
-            self.assertEqual(options_data[1][2], "Blue")
-            self.assertEqual(options_data[1][4], 1)  # chosen is True
+            self.assertEqual(options_data[0][4], "Red")  # Text is now at index 4
+            self.assertEqual(options_data[1][4], "Blue")  # Text is now at index 4
+            self.assertEqual(options_data[1][6], 1)  # chosen is now at index 6
 
 
 if __name__ == "__main__":

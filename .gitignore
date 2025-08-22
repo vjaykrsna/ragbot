@@ -1,18 +1,13 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
 # Environment variables
 .env
-.venv
+
+# Python files
+*.pyc
 
 # IDEs and editors
 .crush/
 .idea/
 .vscode/
-QWEN.md
 
 # Databases and Session Files
 *.session
@@ -34,7 +29,9 @@ QWEN.md
 
 # Coverage data
 .coverage
-htmlcov/
 
 # Database files
 *.sqlite
+
+.coverage
+QWEN.md

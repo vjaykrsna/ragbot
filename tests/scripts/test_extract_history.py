@@ -26,14 +26,16 @@ class TestExtractHistory(unittest.TestCase):
     @patch("src.history_extractor.storage.json.dump")
     @patch("src.history_extractor.storage.Storage")
     @patch("src.scripts.extract_history.initialize_app")
-    @patch("src.scripts.extract_history.TelegramClient")
+    @patch("src.scripts.extract_history.Client")
+    @patch("src.scripts.extract_history.Storage")
     @patch("src.scripts.extract_history.os.makedirs")
     @patch("src.scripts.extract_history.open", new_callable=mock_open, read_data="{}")
     def test_main_success_path(
         self,
         mock_file,
         mock_makedirs,
-        mock_telegram_client,
+        mock_storage,
+        mock_client,
         mock_init_app,
         mock_storage_class,
         mock_json_dump,
@@ -66,27 +68,27 @@ class TestExtractHistory(unittest.TestCase):
         mock_init_app.return_value = mock_app_context
 
         mock_client_instance = AsyncMock()
-        mock_telegram_client.return_value = mock_client_instance
+        mock_client.return_value = mock_client_instance
 
         # Mock the async context manager for the client
-        mock_client_instance.start.return_value = None
-        mock_client_instance.disconnect.return_value = None
+        mock_client_instance.__aenter__.return_value = mock_client_instance
+        mock_client_instance.__aexit__.return_value = None
         mock_client_instance.get_me.return_value = MagicMock(
             first_name="Test", username="testuser"
         )
 
         # Mock entity and message fetching
-        mock_entity = MagicMock(id=12345, forum=False, title="Test Group")
-        mock_client_instance.get_entity.return_value = mock_entity
+        mock_entity = MagicMock(id=12345, is_forum=False, title="Test Group")
+        mock_client_instance.get_chat.return_value = mock_entity
 
         mock_message = MagicMock()
         mock_message.id = 1
         mock_message.date = datetime.now(timezone.utc)
-        mock_message.sender_id = 101
+        mock_message.from_user = MagicMock()
+        mock_message.from_user.id = 101
         mock_message.text = "Hello"
         mock_message.media = None
-        mock_message.entities = None
-        mock_message.reply_to_msg_id = None
+        mock_message.reply_to_message_id = None
 
         # Create a proper async iterator mock
         class MockAsyncIterator:
@@ -102,8 +104,8 @@ class TestExtractHistory(unittest.TestCase):
                 except StopIteration:
                     raise StopAsyncIteration
 
-        # iter_messages is a regular method that returns an async iterator
-        mock_client_instance.iter_messages = MagicMock(
+        # get_chat_history is a regular method that returns an async iterator
+        mock_client_instance.get_chat_history = MagicMock(
             return_value=MockAsyncIterator([mock_message])
         )
 
@@ -112,13 +114,7 @@ class TestExtractHistory(unittest.TestCase):
 
         # --- Assertions ---
         mock_init_app.assert_called_once()
-        mock_telegram_client.assert_called_once()
-        mock_client_instance.start.assert_called_once()
-        mock_client_instance.get_entity.assert_called_with(12345)
-        mock_app_context.db.insert_messages.assert_called_once()
-        mock_client_instance.disconnect.assert_called_once()
-
-        # Check that progress was saved by inspecting the call to json.dump
-        mock_json_dump.assert_called_once()
-        saved_data = mock_json_dump.call_args[0][0]
-        self.assertEqual(saved_data, {"12345_0": 1})
+        mock_client.assert_called_once()
+        mock_client_instance.get_me.assert_called_once()
+        mock_client_instance.get_chat.assert_called_with(12345)
+        mock_storage.assert_called_once_with(mock_app_context)

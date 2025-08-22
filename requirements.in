@@ -1,9 +1,14 @@
+# Core dependencies
 chromadb
 litellm
 litellm[proxy]
 python-dotenv
-Telethon
+Pyrogram
+TgCrypto
+tqdm
 structlog
 rich
 pyrate-limiter
-python-telegram-bot
+apscheduler
+pydantic
+pydantic-settings

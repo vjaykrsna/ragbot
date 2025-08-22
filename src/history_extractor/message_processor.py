@@ -19,75 +19,64 @@ def get_message_details(msg) -> Tuple[str, Any, Dict[str, Any]]:
         # Extract text content safely
         content = getattr(msg, "text", "") or ""
 
-        # --- Poll Detection ---
-        if hasattr(msg, "media") and msg.media and hasattr(msg.media, "poll"):
+        # Prepare extra data with common message attributes
+        extra_data = {
+            "has_protected_content": getattr(msg, "has_protected_content", False),
+            "edit_date": getattr(msg, "edit_date", None),
+            "views": getattr(msg, "views", None),
+            "forwards": getattr(msg, "forwards", None),
+            "message_thread_id": getattr(msg, "message_thread_id", None),
+            "sender_chat_id": (
+                getattr(msg.sender_chat, "id", None)
+                if getattr(msg, "sender_chat", None)
+                else None
+            ),
+            "sender_chat_title": (
+                getattr(msg.sender_chat, "title", None)
+                if getattr(msg, "sender_chat", None)
+                else None
+            ),
+        }
+
+        # --- Poll Detection for Pyrogram ---
+        if hasattr(msg, "poll") and msg.poll:
             try:
-                poll = msg.media.poll
-                results = msg.media.results
+                poll = msg.poll
 
-                if (
-                    not poll
-                    or not hasattr(poll, "question")
-                    or not hasattr(poll, "answers")
-                ):
-                    return "text", content, {}
-
+                # Extract poll options
                 options = []
-                if results and hasattr(results, "results") and results.results:
-                    try:
-                        for answer, result in zip(poll.answers, results.results):
-                            if not answer or not hasattr(answer, "text"):
-                                continue
-                            option = {
-                                "text": getattr(answer.text, "text", str(answer.text)),
-                                "voters": getattr(result, "voters", 0),
-                            }
-                            if hasattr(result, "chosen") and result.chosen:
-                                option["chosen"] = True
-                            if hasattr(result, "correct") and result.correct:
-                                option["correct"] = True
-                            options.append(option)
-                    except (AttributeError, TypeError, ValueError):
-                        # Fallback: create options without results
-                        options = [
-                            {
-                                "text": getattr(answer.text, "text", str(answer.text)),
-                                "voters": 0,
-                            }
-                            for answer in poll.answers
-                            if answer and hasattr(answer, "text")
-                        ]
-                else:
-                    # No results available
-                    options = [
-                        {
-                            "text": getattr(answer.text, "text", str(answer.text)),
-                            "voters": 0,
-                        }
-                        for answer in poll.answers
-                        if answer and hasattr(answer, "text")
-                    ]
+                for option in getattr(poll, "options", []):
+                    option_dict = {
+                        "text": getattr(option, "text", ""),
+                        "voter_count": getattr(option, "voter_count", 0),
+                    }
+                    # Add other option attributes if available
+                    if hasattr(option, "correct"):
+                        option_dict["correct"] = getattr(option, "correct", False)
+                    options.append(option_dict)
 
                 poll_content = {
-                    "question": getattr(poll.question, "text", str(poll.question))
-                    if poll.question
-                    else "",
+                    "question": getattr(poll, "question", ""),
                     "options": options,
-                    "total_voters": getattr(results, "total_voters", 0)
-                    if results
-                    else 0,
-                    "is_quiz": getattr(poll, "quiz", False),
-                    "is_anonymous": not getattr(poll, "public_voters", True),
+                    "total_voter_count": getattr(poll, "total_voter_count", 0),
+                    "is_quiz": getattr(poll, "is_quiz", False),
+                    "is_anonymous": getattr(poll, "is_anonymous", True),
+                    "close_period": getattr(poll, "close_period", None),
+                    "close_date": getattr(poll, "close_date", None),
                 }
-                return "poll", poll_content, {}
+
+                # Add poll-specific data to extra_data
+                extra_data["poll_id"] = getattr(poll, "id", None)
+
+                return "poll", poll_content, extra_data
 
             except Exception:
-                # If poll processing fails, fall back to text
-                return "text", content, {}
+                # If poll processing fails, fall back to text but keep extra_data
+                return "text", content, extra_data
 
         # Default to text message if no other type is detected
-        return "text", content, {}
+        return "text", content, extra_data
 
-    except Exception:
+    except Exception as e:
         # Ultimate fallback for any unexpected errors
-        return "text", "", {}
+        return "text", "", {"error": str(e)}
