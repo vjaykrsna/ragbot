@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -39,7 +38,6 @@ class Storage:
             msg["source_saved_file"] = None  # No longer saving to individual files
             msg["ingestion_timestamp"] = ingestion_ts
         db.insert_messages(messages)
-        logging.info(f"✅ Saved {len(messages)} messages to the database")
 
     def load_last_msg_ids(self) -> Dict[str, int]:
         """

@@ -2,7 +2,7 @@
 
 [![Python CI](https://github.com/vjaykrsna/ragbot/actions/workflows/ci.yml/badge.svg)](https://github.com/vjaykrsna/ragbot/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
 A sophisticated RAG-powered Telegram bot that answers questions about your chat history using advanced natural language processing and vector search technologies. Built with a modular architecture for maximum maintainability and scalability.
 
@@ -187,7 +187,7 @@ Contributions are welcome! Please feel free to submit a pull request or open an 
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
