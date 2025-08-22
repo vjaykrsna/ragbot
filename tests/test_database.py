@@ -102,17 +102,25 @@ class TestDatabase(unittest.TestCase):
         # Check the polls and poll_options tables directly
         with self.db._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM polls WHERE message_id=?", (2,))
+            cursor.execute(
+                "SELECT * FROM polls WHERE message_id=? AND source_group_id=? AND topic_id=?",
+                (2, 202, 101),
+            )
             poll_data = cursor.fetchone()
             self.assertIsNotNone(poll_data)
-            self.assertEqual(poll_data[1], "What is your favorite color?")
+            self.assertEqual(
+                poll_data[3], "What is your favorite color?"
+            )  # Question is now at index 3
 
-            cursor.execute("SELECT * FROM poll_options WHERE poll_id=?", (2,))
+            cursor.execute(
+                "SELECT * FROM poll_options WHERE poll_id=? AND poll_source_group_id=? AND poll_topic_id=?",
+                (2, 202, 101),
+            )
             options_data = cursor.fetchall()
             self.assertEqual(len(options_data), 2)
-            self.assertEqual(options_data[0][2], "Red")
-            self.assertEqual(options_data[1][2], "Blue")
-            self.assertEqual(options_data[1][4], 1)  # chosen is True
+            self.assertEqual(options_data[0][4], "Red")  # Text is now at index 4
+            self.assertEqual(options_data[1][4], "Blue")  # Text is now at index 4
+            self.assertEqual(options_data[1][6], 1)  # chosen is now at index 6
 
 
 if __name__ == "__main__":
