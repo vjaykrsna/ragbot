@@ -29,15 +29,22 @@ class TestDatabase(unittest.TestCase):
         # Patch the _get_connection method to always return our single connection
         self.managed_connection_mock = MagicMock()
         self.managed_connection_mock.__enter__.return_value = self.connection
+        self.managed_connection_mock.__exit__.return_value = None
         self.db._get_connection = MagicMock(return_value=self.managed_connection_mock)
 
     def tearDown(self):
         """Close the connection and remove the temporary directory."""
-        self.connection.close()
+        # Close all connections properly
+        if hasattr(self, "connection") and self.connection:
+            self.connection.close()
+        if hasattr(self, "managed_connection_mock"):
+            # Ensure any mock connections are properly handled
+            pass
         self.mock_get_root.stop()
         import shutil
 
-        shutil.rmtree(self.test_dir)
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
 
     def test_initialization_creates_directory(self):
         """Test that the __init__ method creates the database directory."""

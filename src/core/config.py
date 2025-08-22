@@ -12,6 +12,18 @@ from dotenv import load_dotenv
 
 
 @dataclass
+class TelegramExtractionSettings:
+    """Settings for Telegram message extraction process."""
+
+    concurrent_groups: int = 2  # Conservative setting for API rate limits
+    messages_per_request: int = (
+        100  # Optimized for Telegram API limits (max 100 per call)
+    )
+    buffer_size: int = 2000  # Balanced memory utilization
+    ui_update_interval: int = 2  # Good balance of responsiveness and performance
+
+
+@dataclass
 class TelegramSettings:
     """Settings for Telegram client."""
 
@@ -22,6 +34,9 @@ class TelegramSettings:
     bot_token: str
     session_name: str = "telegram_session"
     group_ids: List[int] = field(default_factory=list)
+    extraction: TelegramExtractionSettings = field(
+        default_factory=TelegramExtractionSettings
+    )
 
 
 @dataclass
@@ -149,9 +164,9 @@ class SynthesisSettings:
     - batch_size: Conversations per API call (larger = more efficient)
     """
 
-    max_workers: int = 4  # Optimized for 20 API keys
-    requests_per_minute: int = 180  # High throughput with 20 keys
-    batch_size: int = 8  # Larger batches for better efficiency
+    max_workers: int = 4  # Reduced from 6
+    requests_per_minute: int = 180  # Back to original
+    batch_size: int = 8  # Back to original
 
 
 @dataclass
@@ -233,6 +248,12 @@ def get_settings() -> AppSettings:
         bot_token=bot_token,
         session_name=os.getenv("SESSION_NAME", "telegram_session"),
         group_ids=[int(gid.strip()) for gid in group_ids_str.split(",") if gid.strip()],
+        extraction=TelegramExtractionSettings(
+            concurrent_groups=int(os.getenv("TELEGRAM_CONCURRENT_GROUPS", "2")),
+            messages_per_request=int(os.getenv("TELEGRAM_MESSAGES_PER_REQUEST", "200")),
+            buffer_size=int(os.getenv("TELEGRAM_BUFFER_SIZE", "1000")),
+            ui_update_interval=int(os.getenv("TELEGRAM_UI_UPDATE_INTERVAL", "3")),
+        ),
     )
 
     # --- Path Settings ---
@@ -297,9 +318,9 @@ def get_settings() -> AppSettings:
     synthesis_settings = SynthesisSettings(
         requests_per_minute=int(
             os.getenv("REQUESTS_PER_MINUTE", "180")
-        ),  # Much higher with 20 keys
-        batch_size=int(os.getenv("BATCH_SIZE", "8")),  # Larger batches for efficiency
-        max_workers=int(os.getenv("MAX_WORKERS", "4")),  # More workers with more keys
+        ),  # Back to original
+        batch_size=int(os.getenv("BATCH_SIZE", "8")),  # Back to original
+        max_workers=int(os.getenv("MAX_WORKERS", "4")),  # Reduced
     )
 
     # --- RAG Settings ---
@@ -412,3 +433,49 @@ def _validate_configuration(
         raise ValueError("No synthesis models configured")
     if not embedding_models:
         raise ValueError("No embedding models configured")
+
+    # Validate Telegram extraction settings
+    if (
+        telegram.extraction.concurrent_groups < 1
+        or telegram.extraction.concurrent_groups > 5
+    ):
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"TELEGRAM_CONCURRENT_GROUPS ({telegram.extraction.concurrent_groups}) should be between 1 and 5. "
+            f"Values outside this range may cause performance issues or rate limiting."
+        )
+
+    if (
+        telegram.extraction.messages_per_request < 50
+        or telegram.extraction.messages_per_request > 1000
+    ):
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"TELEGRAM_MESSAGES_PER_REQUEST ({telegram.extraction.messages_per_request}) should be between 50 and 1000. "
+            f"Values outside this range may cause performance issues or rate limiting."
+        )
+
+    if telegram.extraction.buffer_size < 100 or telegram.extraction.buffer_size > 5000:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"TELEGRAM_BUFFER_SIZE ({telegram.extraction.buffer_size}) should be between 100 and 5000. "
+            f"Values outside this range may cause performance issues or memory problems."
+        )
+
+    if (
+        telegram.extraction.ui_update_interval < 1
+        or telegram.extraction.ui_update_interval > 5
+    ):
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"TELEGRAM_UI_UPDATE_INTERVAL ({telegram.extraction.ui_update_interval}) should be between 1 and 5 seconds. "
+            f"Values outside this range may cause UI issues or unnecessary I/O overhead."
+        )

@@ -8,7 +8,6 @@ from typing import Any, Dict, List
 import chromadb
 from chromadb.api.models.Collection import Collection
 from pyrate_limiter import Duration, Limiter, Rate
-from tqdm import tqdm
 
 from src.core.app import initialize_app
 from src.core.config import AppSettings
@@ -123,53 +122,55 @@ class KnowledgeSynthesizer:
         processed_hashes = self.progress_tracker.load_processed_hashes()
         total_nuggets_stored = 0
 
-        with tqdm(total=len(batches), desc="Synthesizing Knowledge") as pbar:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.settings.synthesis.max_workers
-            ) as executor:
-                future_to_batch_index = {}
-                batch_index_to_hash = {}
-                for i, batch in enumerate(batches):
-                    bh = self._batch_hash(batch)
-                    batch_index_to_hash[i] = bh
-                    if bh in processed_hashes:
-                        logger.info(f"Skipping already-processed batch {i} (hash={bh})")
-                        pbar.update(1)
-                        continue
-                    fut = executor.submit(
-                        self._process_conversation_batch,
-                        batch,
-                        prompt_template,
-                        collection,
-                    )
-                    future_to_batch_index[fut] = i
+        completed_batches = 0
+        total_batches = len(batches)
 
-                for future in concurrent.futures.as_completed(future_to_batch_index):
-                    batch_index = future_to_batch_index[future]
-                    try:
-                        num_stored = future.result()
-                        if num_stored > 0:
-                            bh = batch_index_to_hash.get(batch_index)
-                            if bh:
-                                processed_hashes.add(bh)
-                            total_nuggets_stored += num_stored
-                            last_item_in_batch = len(batches[batch_index]) - 1
-                            # Since we're working with optimized conversations, adjust the index calculation
-                            new_last_processed_index = (
-                                start_index
-                                + batch_index * batch_size
-                                + last_item_in_batch
-                            )
-                            self.progress_tracker.save_progress(
-                                new_last_processed_index
-                            )
-                    except Exception as e:
-                        logger.error(
-                            f"An error occurred while processing batch index {batch_index}: {e}",
-                            exc_info=True,
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.settings.synthesis.max_workers
+        ) as executor:
+            future_to_batch_index = {}
+            batch_index_to_hash = {}
+            for i, batch in enumerate(batches):
+                bh = self._batch_hash(batch)
+                batch_index_to_hash[i] = bh
+                if bh in processed_hashes:
+                    logger.info(
+                        f"Skipping already-processed batch {i + 1}/{total_batches} (hash={bh})"
+                    )
+                    completed_batches += 1
+                    continue
+                fut = executor.submit(
+                    self._process_conversation_batch,
+                    batch,
+                    prompt_template,
+                    collection,
+                )
+                future_to_batch_index[fut] = i
+
+            for future in concurrent.futures.as_completed(future_to_batch_index):
+                batch_index = future_to_batch_index[future]
+                try:
+                    num_stored = future.result()
+                    if num_stored > 0:
+                        bh = batch_index_to_hash.get(batch_index)
+                        if bh:
+                            processed_hashes.add(bh)
+                        total_nuggets_stored += num_stored
+                        last_item_in_batch = len(batches[batch_index]) - 1
+                        # Since we're working with optimized conversations, adjust the index calculation
+                        new_last_processed_index = (
+                            start_index + batch_index * batch_size + last_item_in_batch
                         )
-                    pbar.update(1)
-                    pbar.set_postfix({"Stored": f"{total_nuggets_stored}"})
+                        self.progress_tracker.save_progress(new_last_processed_index)
+                except Exception as e:
+                    logger.error(
+                        f"An error occurred while processing batch index {batch_index}: {e}",
+                        exc_info=True,
+                    )
+                completed_batches += 1
+                logger.info(
+                    f"Progress: {completed_batches}/{total_batches} batches completed (Total nuggets stored: {total_nuggets_stored})"
+                )
 
         self.progress_tracker.save_processed_hashes(processed_hashes)
 
