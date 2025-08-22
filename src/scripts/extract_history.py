@@ -86,35 +86,44 @@ async def main():
     group_ids = settings.telegram.group_ids
     last_msg_ids = storage.load_last_msg_ids()
 
+    # Print debug information
     print(f"🏢 Starting extraction of {len(group_ids)} groups...")
+    print(f"📊 Last message IDs: {last_msg_ids}")
+    print(f"⚙️  Concurrent groups: {settings.telegram.extraction.concurrent_groups}")
+    print(
+        f"⚙️  Messages per request: {settings.telegram.extraction.messages_per_request}"
+    )
+    print(f"⚙️  Buffer size: {settings.telegram.extraction.buffer_size}")
+    print(f"⚙️  UI update interval: {settings.telegram.extraction.ui_update_interval}")
 
+    # Process groups sequentially (one at a time) to avoid issues
     total_messages_extracted = 0
     for i, gid in enumerate(group_ids, 1):
         try:
             # Get group info for better display
             entity = await client.get_entity(gid)
             group_name = getattr(entity, "title", f"Group {gid}")
-            sys.stdout.write(
-                f"\\r📂 Processing group {i}/{len(group_ids)}: '{group_name}'"
-            )
+            sys.stdout.write(f"\rProcessing group {i}/{len(group_ids)}: '{group_name}'")
             sys.stdout.flush()
 
             # Process this group
             count = await extractor.extract_from_group_id(gid, last_msg_ids)
-            total_messages_extracted += count
 
             # Save progress after each group to ensure we don't lose progress
             storage.save_last_msg_ids(last_msg_ids)
-            print(f"\\n💾 Saved progress for group '{group_name}'")
+            print(f"\n💾 Saved progress for group '{group_name}'")
 
+            total_messages_extracted += count
         except Exception as e:
             logging.error(
                 f"❌ Failed to process group {i}/{len(group_ids)} '{group_name}': {e}"
             )
 
     await client.disconnect()
+    # Ensure any remaining messages in the buffer are saved
+    storage.close()
     print(
-        f"\\n🎉 Extraction complete. Total messages extracted: {total_messages_extracted}"
+        f"\n🎉 Extraction complete. Total messages extracted: {total_messages_extracted}"
     )
 
 

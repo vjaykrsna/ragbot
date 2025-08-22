@@ -9,7 +9,7 @@ from src.core.config import PathSettings
 
 
 class Database:
-    def __init__(self, settings: PathSettings, pool_size: int = 5):
+    def __init__(self, settings: PathSettings, pool_size: int = 10):  # Back to 10
         os.makedirs(settings.db_dir, exist_ok=True)
         self.db_path = os.path.join(settings.db_dir, "ragbot.sqlite")
         # Create the database file if it doesn't exist
@@ -23,6 +23,12 @@ class Database:
         # Pre-populate the pool with connections
         for _ in range(pool_size):
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute(
+                "PRAGMA journal_mode=WAL"
+            )  # Enable WAL mode for better concurrency
+            conn.execute("PRAGMA synchronous=NORMAL")  # Optimize for performance
+            conn.execute("PRAGMA cache_size=5000")  # Balanced cache size
+            conn.execute("PRAGMA temp_store=MEMORY")  # Use memory for temp storage
             self._create_tables(conn)
             self.connection_pool.put(conn)
 
@@ -43,6 +49,10 @@ class Database:
         except Queue.Empty:
             # Create new connection if pool is empty
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA cache_size=5000")
+            conn.execute("PRAGMA temp_store=MEMORY")
             self._create_tables(conn)
             return conn
 
@@ -99,6 +109,14 @@ class Database:
                 FOREIGN KEY (poll_id) REFERENCES polls (message_id)
             )
             """
+        )
+        # Create indexes for better query performance
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_topic ON messages(topic_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(source_group_id)"
         )
         conn.commit()
 
@@ -179,7 +197,7 @@ class Database:
                     )
                 )
 
-        # Batch insert messages
+        # Batch insert messages with executemany for better performance
         if message_data:
             cursor.executemany(
                 """
