@@ -1,3 +1,4 @@
+# Core dependencies
 chromadb
 litellm
 litellm[proxy]
@@ -8,4 +9,6 @@ tqdm
 structlog
 rich
 pyrate-limiter
-python-telegram-bot
+apscheduler
+pydantic
+pydantic-settings

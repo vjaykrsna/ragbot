@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sqlite3
 
 from pyrogram import Client
 
@@ -10,7 +11,7 @@ from src.history_extractor.telegram_extractor import TelegramExtractor
 
 
 async def main():
-    """Orchestrates the Telegram message extraction process."""
+    """Main entry point for the history extraction script."""
     # Initialize the application context
     app_context = initialize_app()
     settings = app_context.settings
@@ -19,14 +20,37 @@ async def main():
 
     # Use project root to store session files so they are persistent across runs
     session_path = os.path.join(settings.paths.root_dir, settings.telegram.session_name)
-    client = Client(session_path, settings.telegram.api_id, settings.telegram.api_hash)
+
+    # Handle session file compatibility issues during client initialization
+    try:
+        client = Client(
+            session_path, settings.telegram.api_id, settings.telegram.api_hash
+        )
+    except sqlite3.OperationalError as e:
+        if "no such column: version" in str(e):
+            logging.warning(
+                "Session file incompatible during initialization. Creating a new one..."
+            )
+            # Remove the incompatible session file
+            session_files = [session_path, f"{session_path}.session"]
+            for session_file in session_files:
+                if os.path.exists(session_file):
+                    os.remove(session_file)
+                    logging.info(f"Removed incompatible session file: {session_file}")
+
+            # Create a new client with the same parameters
+            client = Client(
+                session_path, settings.telegram.api_id, settings.telegram.api_hash
+            )
+        else:
+            raise
 
     # Start the Pyrogram client
     async with client:
         # Get the current user
         me = await client.get_me()
         logging.info(
-            f"👤 Logged in as: {me.first_name} (@{getattr(me, 'username', 'N/A')})"
+            f'👤 Logged in as: {me.first_name} (@{getattr(me, "username", "N/A")})'
         )
 
         if not settings.telegram.group_ids:
@@ -62,17 +86,17 @@ async def main():
                 entity = await client.get_chat(gid)
                 group_name = getattr(entity, "title", f"Group {gid}")
                 logging.info(
-                    f"📂 Processing group {i}/{len(group_ids)}: '{group_name}'"
+                    f'📂 Processing group {i}/{len(group_ids)}: "{group_name}"'
                 )
 
                 # Process this group
                 await extractor.extract_from_group_id(gid, last_msg_ids)
 
-                logging.info(f"✅ Completed group {i}/{len(group_ids)}: '{group_name}'")
+                logging.info(f'✅ Completed group {i}/{len(group_ids)}: "{group_name}"')
 
             except Exception as e:
                 logging.error(
-                    f"❌ Failed to process group {i}/{len(group_ids)} '{group_name}': {e}"
+                    f'❌ Failed to process group {i}/{len(group_ids)} "{group_name}": {e}'
                 )
 
         storage.save_last_msg_ids(last_msg_ids)
@@ -80,5 +104,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Using asyncio.run() is the modern way to run an async main function.
     asyncio.run(main())

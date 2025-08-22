@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -18,6 +17,10 @@ class Storage:
     def __init__(self, app_context: AppContext):
         self.app_context = app_context
         self.settings = app_context.settings
+        self.message_buffer = []  # Buffer to accumulate messages
+        self.buffer_size = (
+            self.settings.telegram.extraction.buffer_size
+        )  # Use configured buffer size
 
     def save_messages_to_db(
         self, chat_title: str, topic_id: int, messages: List[Dict[str, Any]]
@@ -30,8 +33,15 @@ class Storage:
             topic_id: The ID of the topic the messages are from.
             messages: A list of messages to save.
         """
-        db = self.app_context.db
+        # Add messages to buffer with proper metadata
         ingestion_ts = datetime.now(timezone.utc).isoformat()
+
+        # Pre-allocate buffer space if needed
+        needed_space = len(messages)
+        if len(self.message_buffer) + needed_space > self.buffer_size:
+            # Flush current buffer first if adding these messages would exceed buffer size
+            self._flush_buffer()
+
         for msg in messages:
             msg["source_name"] = chat_title
             # Ensure source_group_id is set correctly
@@ -42,8 +52,22 @@ class Storage:
             msg["source_topic_id"] = topic_id
             msg["source_saved_file"] = None  # No longer saving to individual files
             msg["ingestion_timestamp"] = ingestion_ts
-        db.insert_messages(messages)
-        logging.info(f"✅ Saved {len(messages)} messages to the database")
+            self.message_buffer.append(msg)
+
+        # Save when buffer is full
+        if len(self.message_buffer) >= self.buffer_size:
+            self._flush_buffer()
+
+    def _flush_buffer(self):
+        """Flush the message buffer to the database."""
+        if self.message_buffer:
+            db = self.app_context.db
+            db.insert_messages(self.message_buffer)
+            self.message_buffer.clear()
+
+    def close(self):
+        """Flush any remaining messages and clean up resources."""
+        self._flush_buffer()
 
     def load_last_msg_ids(self) -> Dict[str, int]:
         """
@@ -67,5 +91,7 @@ class Storage:
         Args:
             data: A dictionary mapping topic keys to the last processed message ID.
         """
+        # Flush any remaining messages before saving progress
+        self._flush_buffer()
         with open(self.settings.paths.tracking_file, "w") as f:
             json.dump(data, f, indent=2)
