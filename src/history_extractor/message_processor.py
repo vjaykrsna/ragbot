@@ -26,12 +26,16 @@ def get_message_details(msg) -> Tuple[str, Any, Dict[str, Any]]:
             "views": getattr(msg, "views", None),
             "forwards": getattr(msg, "forwards", None),
             "message_thread_id": getattr(msg, "message_thread_id", None),
-            "sender_chat_id": getattr(msg.sender_chat, "id", None)
-            if getattr(msg, "sender_chat", None)
-            else None,
-            "sender_chat_title": getattr(msg.sender_chat, "title", None)
-            if getattr(msg, "sender_chat", None)
-            else None,
+            "sender_chat_id": (
+                getattr(msg.sender_chat, "id", None)
+                if getattr(msg, "sender_chat", None)
+                else None
+            ),
+            "sender_chat_title": (
+                getattr(msg.sender_chat, "title", None)
+                if getattr(msg, "sender_chat", None)
+                else None
+            ),
         }
 
         # --- Poll Detection for Pyrogram ---

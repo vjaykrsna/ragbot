@@ -32,29 +32,33 @@ class Database:
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY,
+                id INTEGER,
+                source_group_id INTEGER,
+                topic_id INTEGER,
                 date TEXT,
                 sender_id TEXT,
                 message_type TEXT,
                 content TEXT,
                 extra_data TEXT,
                 reply_to_msg_id INTEGER,
-                topic_id INTEGER,
                 topic_title TEXT,
                 source_name TEXT,
-                source_group_id INTEGER,
-                ingestion_timestamp TEXT
+                ingestion_timestamp TEXT,
+                PRIMARY KEY (id, source_group_id, topic_id)
             )
             """
         )
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS polls (
-                message_id INTEGER PRIMARY KEY,
+                message_id INTEGER,
+                source_group_id INTEGER,
+                topic_id INTEGER,
                 question TEXT,
                 total_voter_count INTEGER,
                 is_quiz BOOLEAN,
-                is_anonymous BOOLEAN
+                is_anonymous BOOLEAN,
+                PRIMARY KEY (message_id, source_group_id, topic_id)
             )
             """
         )
@@ -63,11 +67,13 @@ class Database:
             CREATE TABLE IF NOT EXISTS poll_options (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 poll_id INTEGER,
+                poll_source_group_id INTEGER,
+                poll_topic_id INTEGER,
                 text TEXT,
                 voters INTEGER,
                 chosen BOOLEAN,
                 correct BOOLEAN,
-                FOREIGN KEY (poll_id) REFERENCES polls (message_id)
+                FOREIGN KEY (poll_id, poll_source_group_id, poll_topic_id) REFERENCES polls (message_id, source_group_id, topic_id)
             )
             """
         )
@@ -87,23 +93,23 @@ class Database:
         cursor.execute(
             """
             INSERT OR REPLACE INTO messages (
-                id, date, sender_id, message_type, content, extra_data,
-                reply_to_msg_id, topic_id, topic_title, source_name,
-                source_group_id, ingestion_timestamp
+                id, source_group_id, topic_id, date, sender_id, message_type,
+                content, extra_data, reply_to_msg_id, topic_title, source_name,
+                ingestion_timestamp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 msg["id"],
+                msg["source_group_id"],
+                msg["topic_id"],
                 msg["date"],
                 msg["sender_id"],
                 msg["message_type"],
                 msg["content"],
                 str(msg["extra_data"]),
                 msg["reply_to_msg_id"],
-                msg["topic_id"],
                 msg["topic_title"],
                 msg["source_name"],
-                msg["source_group_id"],
                 msg["ingestion_timestamp"],
             ),
         )
@@ -113,11 +119,13 @@ class Database:
         cursor.execute(
             """
             INSERT OR REPLACE INTO polls (
-                message_id, question, total_voter_count, is_quiz, is_anonymous
-            ) VALUES (?, ?, ?, ?, ?)
+                message_id, source_group_id, topic_id, question, total_voter_count, is_quiz, is_anonymous
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 msg["id"],
+                msg["source_group_id"],
+                msg["topic_id"],
                 poll_content["question"],
                 poll_content["total_voter_count"],
                 poll_content["is_quiz"],
@@ -128,11 +136,13 @@ class Database:
             cursor.execute(
                 """
                 INSERT INTO poll_options (
-                    poll_id, text, voters, chosen, correct
-                ) VALUES (?, ?, ?, ?, ?)
+                    poll_id, poll_source_group_id, poll_topic_id, text, voters, chosen, correct
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     msg["id"],
+                    msg["source_group_id"],
+                    msg["topic_id"],
                     option["text"],
                     option["voter_count"],
                     option.get("chosen", False),
@@ -149,3 +159,40 @@ class Database:
             columns = [description[0] for description in cursor.description]
             for row in cursor.fetchall():
                 yield dict(zip(columns, row))
+
+    def get_message_by_id(self, message_id: int, source_group_id: int, topic_id: int):
+        """
+        Retrieve a specific message by its composite key.
+
+        Args:
+            message_id: The Telegram message ID
+            source_group_id: The source group ID
+            topic_id: The topic ID
+
+        Returns:
+            The message dictionary or None if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM messages WHERE id = ? AND source_group_id = ? AND topic_id = ?",
+                (message_id, source_group_id, topic_id),
+            )
+            columns = [description[0] for description in cursor.description]
+            row = cursor.fetchone()
+            return dict(zip(columns, row)) if row else None
+
+    def get_unique_sources(self):
+        """
+        Retrieve all unique source groups and topics.
+
+        Returns:
+            List of dictionaries containing source_group_id and topic_id combinations
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT source_group_id, topic_id, source_name, topic_title FROM messages ORDER BY source_group_id, topic_id"
+            )
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]

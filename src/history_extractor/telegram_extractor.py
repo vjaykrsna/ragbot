@@ -98,9 +98,11 @@ class TelegramExtractor:
             messages.append(
                 {
                     "id": msg.id,
-                    "date": msg.date.isoformat()
-                    if isinstance(msg.date, datetime)
-                    else datetime.fromtimestamp(msg.date).isoformat(),
+                    "date": (
+                        msg.date.isoformat()
+                        if isinstance(msg.date, datetime)
+                        else datetime.fromtimestamp(msg.date).isoformat()
+                    ),
                     "sender_id": sender_id,
                     "message_type": message_type,
                     "content": content,
@@ -108,9 +110,9 @@ class TelegramExtractor:
                     "reply_to_msg_id": getattr(msg, "reply_to_message_id", None),
                     "topic_id": topic_id,
                     "topic_title": topic_title,
-                    "source_name": entity.title
-                    if hasattr(entity, "title")
-                    else str(entity),
+                    "source_name": (
+                        entity.title if hasattr(entity, "title") else str(entity)
+                    ),
                     "source_group_id": entity.id if hasattr(entity, "id") else group_id,
                     "ingestion_timestamp": datetime.now().isoformat(),
                 }
