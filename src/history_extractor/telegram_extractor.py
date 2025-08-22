@@ -27,6 +27,8 @@ class TelegramExtractor:
     def __init__(self, client: TelegramClient, storage: Storage):
         self.client = client
         self.storage = storage
+        # Get settings from storage's app_context
+        self.settings = storage.app_context.settings.telegram.extraction
 
     async def extract_from_topic(
         self, entity: Any, topic: Any, last_msg_ids: Dict[str, int]
@@ -49,24 +51,50 @@ class TelegramExtractor:
         last_id = last_msg_ids.get(last_id_key, 0)
         max_id = 0
 
-        iterator_kwargs = {"min_id": last_id, "reverse": True}
-        if topic_id != 0:  # 0 is the 'General' topic in non-forum groups
-            iterator_kwargs["reply_to"] = topic_id
-
         # Start timing the extraction process
         start_time = time.time()
 
         # Collect messages with periodic updates
         message_list = []
         last_update_time = start_time
-        update_interval = 2  # Update every 2 seconds
+        update_interval = self.settings.ui_update_interval  # Use configured interval
 
+        # Fetch all messages - simplest approach possible
+        iterator_kwargs = {
+            "wait_time": 1,
+            "reverse": True,  # Process messages in chronological order (oldest first)
+        }
+
+        # Only set limit if we want to limit the number of messages
+        # For fetching all messages, we don't set a limit
+
+        if topic_id != 0:  # 0 is the 'General' topic in non-forum groups
+            iterator_kwargs["reply_to"] = topic_id
+
+        print(f"  Starting to fetch messages for {entity.title}/{topic_title}")
+
+        message_count = 0
         async for msg in self.client.iter_messages(entity, **iterator_kwargs):
+            message_count += 1
+
+            # Skip service messages and empty messages
             if isinstance(msg, telethon.tl.types.MessageService):
                 continue
             if not msg.text and not msg.media:
                 continue
+
+            # Only add messages that are newer than our last processed message
+            if last_id > 0 and msg.id <= last_id:
+                # When processing in chronological order, once we hit a message
+                # that's already been processed, we can stop since all subsequent
+                # messages should also have been processed
+                print(
+                    f"  Stopping extraction for {entity.title}/{topic_title} at message ID {msg.id} (last processed: {last_id})"
+                )
+                break
+
             message_list.append(msg)
+            max_id = max(max_id, msg.id)
 
             # Periodic updates on the same line
             current_time = time.time()
@@ -82,6 +110,9 @@ class TelegramExtractor:
                 sys.stdout.flush()
                 last_update_time = current_time
 
+        print(f"  Finished fetching messages. Total fetched: {message_count}")
+        print(f"  Messages to process: {len(message_list)}")
+
         if not message_list:
             return 0
 
@@ -91,8 +122,8 @@ class TelegramExtractor:
             len(message_list) / extraction_time if extraction_time > 0 else 0
         )
 
-        # Process messages with simplified progress updates
-        batch_size = 250  # Increased batch size for better performance
+        # Process messages with optimized batch processing
+        batch_size = 250  # Keep at a reasonable value for memory efficiency
         message_batch = []
         total_saved = 0
 
@@ -119,7 +150,6 @@ class TelegramExtractor:
                     "topic_title": topic_title,
                 }
             )
-            max_id = max(max_id, msg.id)
             total_saved += 1
 
             # When batch is full, save to database
@@ -138,6 +168,10 @@ class TelegramExtractor:
 
         # Update last message ID
         if total_saved > 0:
+            last_msg_ids[last_id_key] = max_id
+        elif message_count > 0 and max_id > last_msg_ids.get(last_id_key, 0):
+            # If we processed messages but didn't save any (because they were already processed),
+            # we still need to update the last_id to avoid reprocessing the same messages
             last_msg_ids[last_id_key] = max_id
 
         # Display final extraction information on a new line

@@ -24,6 +24,7 @@ class TestExtractHistory(unittest.TestCase):
         self.temp_dir.cleanup()
 
     @patch("src.history_extractor.storage.json.dump")
+    @patch("src.history_extractor.storage.Storage")
     @patch("src.scripts.extract_history.initialize_app")
     @patch("src.scripts.extract_history.TelegramClient")
     @patch("src.scripts.extract_history.os.makedirs")
@@ -34,6 +35,7 @@ class TestExtractHistory(unittest.TestCase):
         mock_makedirs,
         mock_telegram_client,
         mock_init_app,
+        mock_storage_class,
         mock_json_dump,
     ):
         """
@@ -44,7 +46,23 @@ class TestExtractHistory(unittest.TestCase):
         mock_settings = MagicMock()
         mock_settings.telegram.group_ids = [12345]
         mock_settings.paths = self.mock_path_settings
+        # Mock the new concurrent_groups setting
+        mock_extraction_settings = MagicMock()
+        mock_extraction_settings.concurrent_groups = 3
+        mock_extraction_settings.messages_per_request = 3000
+        mock_extraction_settings.ui_update_interval = 5
+        mock_extraction_settings.buffer_size = 2000
+        mock_settings.telegram.extraction = mock_extraction_settings
         mock_app_context.settings = mock_settings
+
+        # Mock the storage
+        mock_storage = MagicMock()
+        mock_storage.app_context = mock_app_context
+        mock_storage.buffer_size = 2000
+        mock_storage.load_last_msg_ids.return_value = {}
+        mock_app_context.db = MagicMock()
+        mock_storage_class.return_value = mock_storage
+
         mock_init_app.return_value = mock_app_context
 
         mock_client_instance = AsyncMock()
