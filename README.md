@@ -191,7 +191,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Built with [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)
+- Built with [Telethon](https://github.com/LonamiWebs/Telethon)
 - Uses [LiteLLM](https://github.com/BerriAI/litellm) for unified LLM access
 - Vector storage powered by [ChromaDB](https://github.com/chroma-core/chroma)
 - Inspired by modern RAG architectures and privacy-first design principles
