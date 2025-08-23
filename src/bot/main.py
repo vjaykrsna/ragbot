@@ -1,4 +1,5 @@
 import asyncio
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -16,6 +17,43 @@ from src.core.app import initialize_app
 from src.rag.rag_pipeline import RAGPipeline
 
 logger = structlog.get_logger(__name__)
+
+
+def validate_user_input(text: str) -> tuple[bool, str]:
+    """
+    Validate and sanitize user input for security.
+
+    Args:
+        text: The user input text
+
+    Returns:
+        Tuple of (is_valid, sanitized_text)
+    """
+    if not text or not text.strip():
+        return False, "Message is empty"
+
+    # Remove excessive whitespace
+    sanitized = re.sub(r"\s+", " ", text.strip())
+
+    # Check length limits (reasonable for chat messages)
+    if len(sanitized) > 4000:
+        return False, "Message too long (max 4000 characters)"
+
+    # Basic content filtering - reject messages with suspicious patterns
+    suspicious_patterns = [
+        r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>",  # Script tags
+        r"javascript:",  # JavaScript URLs
+        r"data:text/html",  # Data URLs
+        r"vbscript:",  # VBScript
+        r"onload\s*=",  # Event handlers
+        r"onerror\s*=",  # Error handlers
+    ]
+
+    for pattern in suspicious_patterns:
+        if re.search(pattern, sanitized, re.IGNORECASE):
+            return False, "Message contains potentially harmful content"
+
+    return True, sanitized
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -46,7 +84,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     user_message = update.message.text or ""
-    logger.info("Received message: %s", user_message)
+
+    # Validate and sanitize user input
+    is_valid, sanitized_message = validate_user_input(user_message)
+    if not is_valid:
+        logger.warning("Invalid user input: %s", sanitized_message)
+        await update.message.reply_text(
+            f"Sorry, I can't process that message: {sanitized_message}"
+        )
+        return
+
+    logger.info("Received message: %s", sanitized_message)
 
     # Send "typing..." action
     await context.bot.send_chat_action(
@@ -54,7 +102,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     try:
-        response = await _run_query_in_executor(rag_pipeline, user_message)
+        response = await _run_query_in_executor(rag_pipeline, sanitized_message)
     except Exception as exc:  # preserve non-fatal behaviour
         logger.exception("Error while generating response: %s", exc)
         response = "I encountered an error while trying to generate a response."

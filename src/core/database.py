@@ -57,6 +57,14 @@ class Database:
             raise e
         else:
             conn.commit()
+        finally:
+            # Ensure connection is properly closed/cleaned up
+            if hasattr(self.local, "connection"):
+                try:
+                    self.local.connection.close()
+                    delattr(self.local, "connection")
+                except Exception:
+                    pass  # Ignore cleanup errors
 
     def _create_tables(self, conn: sqlite3.Connection):
         cursor = conn.cursor()

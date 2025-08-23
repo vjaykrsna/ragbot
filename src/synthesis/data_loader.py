@@ -81,14 +81,27 @@ class DataLoader:
         Loads the prompt template from the markdown file.
 
         Returns:
-            The prompt template as a string, or None if the file is not found.
+            The prompt template as a string, or None if the file is not found or corrupted.
         """
         try:
             with open(self.settings.paths.prompt_file, "r", encoding="utf-8") as f:
                 logger.info(
                     f"Loading prompt template from {self.settings.paths.prompt_file}"
                 )
-                return f.read()
+                content = f.read()
+                if not content.strip():
+                    logger.error("Prompt template file is empty")
+                    return None
+                return content
         except FileNotFoundError as e:
             logger.error(f"Could not load prompt template: {e}")
+            return None
+        except UnicodeDecodeError as e:
+            logger.error(f"Encoding error while reading prompt template: {e}")
+            return None
+        except PermissionError as e:
+            logger.error(f"Permission denied while reading prompt template: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error while loading prompt template: {e}")
             return None

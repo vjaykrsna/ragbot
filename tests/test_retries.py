@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from litellm import RateLimitError
 
-from src.synthesis.decorators import retry_with_backoff
+from src.core.error_handler import retry_with_backoff
 
 
 class TestRetryDecorator(unittest.TestCase):
@@ -25,7 +25,7 @@ class TestRetryDecorator(unittest.TestCase):
 
         # Decorate the mock function
         # Use a small initial_wait to speed up the test
-        decorated_func = retry_with_backoff(mock_func, initial_wait=0.1)
+        decorated_func = retry_with_backoff(initial_wait=0.1)(mock_func)
 
         # Call the decorated function
         result = decorated_func()
@@ -52,16 +52,16 @@ class TestRetryDecorator(unittest.TestCase):
         )
 
         # Set max_retries to 2 for this test
-        decorated_func = retry_with_backoff(mock_func, max_retries=2, initial_wait=0.1)
+        decorated_func = retry_with_backoff(max_retries=2, initial_wait=0.1)(mock_func)
 
-        result = decorated_func()
+        with self.assertRaises(RateLimitError):
+            decorated_func()
 
         # Assertions
-        # 1. The function should have been called twice
-        self.assertEqual(mock_func.call_count, 2)
+        # 1. The function should have been called 3 times (1 initial + 2 retries)
+        self.assertEqual(mock_func.call_count, 3)
 
-        # 2. The final result should be None as it failed all retries
-        self.assertIsNone(result)
+        # 2. No result is expected as it failed all retries
 
 
 if __name__ == "__main__":

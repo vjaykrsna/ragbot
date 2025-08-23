@@ -35,6 +35,8 @@ A "Knowledge Nugget" will be a JSON object with the following structure:
 | `keywords` | Array[String] | A list of key terms and entities to aid in keyword-based or hybrid search. | `["oracle cloud", "free tier", "deployment", "systemd"]` |
 | `source_message_ids` | Array[Int] | An array of message IDs from the source conversation that were used to generate this nugget. | `[101, 102, 105, 110]` |
 | `user_ids_involved` | Array[String] | Anonymized user IDs (e.g., "User_1") of the participants. | `["User_1", "User_5", "User_12"]` |
+| `normalized_values` | Array[Object] | **Optional** - Numeric/date facts detected in the conversation with confidence scores. | `[{"span": "2GB RAM", "value": 2, "unit": "GB", "confidence": "High"}]` |
+| `ingestion_timestamp` | String | **Optional** - ISO 8601 timestamp when the nugget was synthesized. | `"2025-08-01T12:45:00Z"` |
 
 ## 4. Schema Visualization (Mermaid)
 

@@ -28,12 +28,10 @@ class AppContext:
         self.settings = settings
         setup_logging(self.settings)
         self.db = Database(self.settings.paths)
-        if not os.path.exists(self.db.db_path):
-            self.db_client = chromadb.PersistentClient(path=self.db.db_path)
-        else:
-            self.db_client = chromadb.PersistentClient(
-                path=os.path.dirname(self.db.db_path)
-            )
+        # Use separate directory for ChromaDB to avoid conflicts with SQLite
+        chroma_db_path = os.path.join(self.settings.paths.data_dir, "chroma_db")
+        os.makedirs(chroma_db_path, exist_ok=True)
+        self.db_client = chromadb.PersistentClient(path=chroma_db_path)
         _logger.info("Application context initialized.")
 
     @classmethod

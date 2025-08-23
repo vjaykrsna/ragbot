@@ -175,7 +175,8 @@ class TestTelegramExtractor(unittest.TestCase):
         # Arrange
         mock_entity = MagicMock()
         mock_entity.id = 123
-        # No channel_id attribute
+        # Remove channel_id attribute to simulate it not existing
+        del mock_entity.channel_id
         mock_entity.access_hash = 789
 
         # Act & Assert
@@ -192,9 +193,9 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.access_hash = None
 
         # Act & Assert
-        # This should handle None access_hash gracefully
+        # getattr should return None when the attribute is None
         access_hash = getattr(mock_entity, "access_hash", 0)
-        self.assertEqual(access_hash, 0)
+        self.assertEqual(access_hash, None)
 
     @patch("src.history_extractor.telegram_extractor.InputChannel")
     @patch("src.history_extractor.telegram_extractor.GetForumTopics")
@@ -214,6 +215,13 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_topics_result = MagicMock()
         mock_topics_result.topics = [MagicMock()]
         self.mock_client.invoke = AsyncMock(return_value=mock_topics_result)
+
+        # Mock get_chat_history to return an async iterator
+        async def async_generator(items):
+            for item in items:
+                yield item
+
+        self.mock_client.get_chat_history = MagicMock(return_value=async_generator([]))
 
         # Act
         async def run_test():
@@ -239,12 +247,20 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.id = 123
         mock_entity.channel_id = 456
         mock_entity.access_hash = 789
+        mock_entity.is_forum = False  # Explicitly set to False to trigger fallback
 
         # Mock API failure
         self.mock_client.invoke = AsyncMock(side_effect=Exception("API Error"))
 
         # Mock regular group processing
         self.extractor.extract_from_topic = AsyncMock(return_value=5)
+
+        # Mock get_chat_history to return an async iterator
+        async def async_generator(items):
+            for item in items:
+                yield item
+
+        self.mock_client.get_chat_history = MagicMock(return_value=async_generator([]))
 
         # Act
         async def run_test():
@@ -383,7 +399,11 @@ class TestTelegramExtractor(unittest.TestCase):
             result, 1
         )  # Should still process the message despite size estimation failure
 
-    def test_concurrent_group_processing_thread_safety(self):
+    @patch("src.history_extractor.telegram_extractor.InputChannel")
+    @patch("src.history_extractor.telegram_extractor.GetForumTopics")
+    def test_concurrent_group_processing_thread_safety(
+        self, mock_get_forum_topics, mock_input_channel
+    ):
         """Test that concurrent group processing is thread-safe."""
         # Arrange
         import asyncio
@@ -392,12 +412,25 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity = MagicMock()
         mock_entity.id = 123
         mock_entity.title = "Test Group"
+        mock_entity.is_forum = False  # Explicitly set to False to trigger fallback
 
         last_msg_ids = {}
         lock = threading.Lock()
 
         # Mock successful processing
         self.extractor.extract_from_topic = AsyncMock(return_value=5)
+
+        # Mock API failure to trigger fallback
+        mock_input_channel_instance = MagicMock()
+        mock_input_channel.return_value = mock_input_channel_instance
+        self.mock_client.invoke = AsyncMock(side_effect=Exception("API Error"))
+
+        # Mock get_chat_history to return an async iterator
+        async def async_generator(items):
+            for item in items:
+                yield item
+
+        self.mock_client.get_chat_history = MagicMock(return_value=async_generator([]))
 
         # Act
         async def run_test():

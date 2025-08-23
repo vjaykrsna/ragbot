@@ -86,6 +86,7 @@ class NuggetGenerator:
                 )
 
             formatted_batch = json.dumps(compact_batch, separators=(",", ":"))
+            # Safe string formatting - prompt_template is treated as literal text
             prompt_payload = f"{prompt_template}\n\n**Input Conversation Batch:**\n```json\n{formatted_batch}\n```"
 
             attempts = 3

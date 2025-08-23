@@ -12,3 +12,4 @@ pyrate-limiter
 apscheduler
 pydantic
 pydantic-settings
+python-telegram-bot

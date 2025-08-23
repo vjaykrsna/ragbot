@@ -173,18 +173,20 @@ This section provides instructions for setting up the project for local developm
 
 1.  **Prerequisites:**
     *   Python 3.11+
-    *   A Telegram account
-    *   Google Gemini API keys
+    *   A Telegram account with API credentials
+    *   Google Gemini API keys (20+ recommended for optimal performance)
 
 2.  **Installation:**
     *   Clone the repository.
-    *   Create and activate a virtual environment.
-    *   Install the required dependencies: `pip install -r requirements.txt`
+    *   Create and activate a virtual environment: `python -m venv .venv && source .venv/bin/activate`
+    *   Install dependencies: `pip install -r requirements.txt && pip install -r dev-requirements.txt`
+    *   Install pre-commit hooks: `pre-commit install`
 
 3.  **Configuration:**
     *   Create a `.env` file from the `.env.example` template.
-    *   Fill in your Telegram `api_id`, `api_hash`, and `TELEGRAM_BOT_TOKEN`.
-    *   Add your Google Gemini API keys.
+    *   Fill in your Telegram `api_id`, `api_hash`, `phone`, `password`, and `bot_token`.
+    *   Add your Google Gemini API keys (GEMINI_API_KEY_1 through GEMINI_API_KEY_20).
+    *   Configure rate limits and performance settings as needed.
 
 4.  **Running the System:**
     *   **Extract Chat History:** Run `python -m src.scripts.extract_history` to fetch messages from Telegram groups.
@@ -209,31 +211,54 @@ The recommended deployment platform is the **Oracle Cloud Free Tier**, which pro
     *   Create systemd service files for both the LiteLLM proxy and the main bot (`src/bot/main.py`).
     *   This will allow the services to start automatically on boot and restart if they crash.
 
-## 7. Future Improvements
+## 7. Security and Reliability Features
+
+The system includes several built-in security and reliability features to ensure safe operation:
+
+### 7.1. Input Validation and Sanitization
+
+-   **User Input Validation:** All user messages are validated for length, content, and malicious patterns before processing
+-   **Query Sanitization:** Input queries are cleaned to prevent injection attacks and remove harmful content
+-   **Rate Limiting:** Built-in rate limiting prevents abuse and ensures fair usage
+
+### 7.2. Error Handling and Resilience
+
+-   **Comprehensive Error Handling:** Multi-layer error handling with graceful degradation
+-   **Retry Mechanisms:** Exponential backoff retry logic for API calls and network operations
+-   **Resource Management:** Proper connection pooling and cleanup to prevent memory leaks
+-   **Checkpoint-based Recovery:** Long-running operations can resume from the last successful point
+
+### 7.3. Data Integrity
+
+-   **Database Transactions:** All database operations use transactions with proper rollback on errors
+-   **Connection Safety:** Thread-local database connections prevent race conditions
+-   **Data Validation:** Knowledge nuggets are validated against schema before storage
+
+## 8. Future Improvements
 
 This project has a solid foundation, but there are several areas where it can be improved and extended.
 
-### 7.1. Implement Re-ranking Logic
+### 8.1. Enhanced Re-ranking Logic
 
 -   **Priority:** High
--   **Description:** The most critical next step is to implement the filtering and re-ranking logic described in the Live RAG Pipeline section. This will fully leverage the `status` and `timestamp` fields in the Knowledge Nugget schema, leading to more accurate and timely answers.
+-   **Description:** The current re-ranking logic can be enhanced with machine learning models to better understand query intent and context relevance.
 
-### 7.2. Hybrid Search
+### 8.2. Hybrid Search Implementation
 
 -   **Priority:** Medium
 -   **Description:** Currently, the retrieval is based purely on semantic similarity. Implementing a hybrid search that combines semantic search with traditional keyword search (using the `keywords` field) could improve retrieval for queries that contain specific, technical terms.
 
-### 7.3. Automated Knowledge Curation
+### 8.3. Automated Knowledge Curation
 
 -   **Priority:** Medium
 -   **Description:** The `synthesize_knowledge.py` script could be enhanced to automatically identify and mark outdated information. For example, if a new nugget is generated that contradicts an existing one, the old nugget's `status` could be automatically changed to `'OUTDATED'`.
 
-### 7.4. User Feedback Loop
+### 8.4. User Feedback Integration
 
 -   **Priority:** Low
 -   **Description:** A mechanism could be added for users to provide feedback on the bot's answers (e.g., with thumbs up/down buttons). This feedback could be used to fine-tune the re-ranking algorithm or identify areas where the knowledge base is weak.
 
-### 7.5. Dependency Management
+### 8.5. Advanced Monitoring
 
 -   **Priority:** Low
--   **Description:** The `requirements.txt` file is quite large. It would be beneficial to review the dependencies and remove any that are not strictly necessary. Using a tool like `pip-tools` could help manage dependencies more effectively.
+-   **Description:** Implement comprehensive monitoring with metrics collection, alerting, and performance dashboards for production deployment.

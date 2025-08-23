@@ -8,15 +8,16 @@ A sophisticated RAG-powered Telegram bot that answers questions about your chat 
 
 ## ✨ Features
 
--   **🤖 Telegram Integration**: Seamless bot integration that can be added to groups or used privately
+-   **🤖 Telegram Integration**: Seamless bot integration using hybrid `python-telegram-bot` + `pyrogram` architecture
 -   **🧠 Advanced RAG Pipeline**: State-of-the-art Retrieval-Augmented Generation using semantic search and LLM-powered responses
 -   **💾 Vector Knowledge Base**: ChromaDB-powered vector database for efficient storage and retrieval of knowledge nuggets
 -   **🏗️ Modular Architecture**: Clean separation of concerns with dependency injection and testable components
 -   **🔄 Streaming Data Pipeline**: Memory-efficient processing of large chat histories with anonymization
 -   **📊 Progress Tracking**: Comprehensive progress tracking and resume capabilities for long-running operations
--   **🛡️ Privacy-First**: User anonymization and data protection built into the processing pipeline
--   **🧪 Comprehensive Testing**: 95+ passing tests with CI/CD pipeline for quality assurance
--   **📈 Production Ready**: Rate limiting, error handling, and logging for enterprise deployment
+-   **🛡️ Security First**: Input validation, sanitization, and comprehensive error handling
+-   **🔒 Privacy Protection**: User anonymization and data protection built into the processing pipeline
+-   **🧪 Robust Testing**: Comprehensive test suite with security and reliability focus
+-   **📈 Production Ready**: Rate limiting, error handling, logging, and resource management for enterprise deployment
 
 ## 🏛️ Project Architecture
 
@@ -152,14 +153,40 @@ pytest --cov=src --cov-report=html
 
 # Run specific test modules
 pytest tests/core/ tests/processing/
+
+# Run security-focused tests
+pytest tests/ -k "security or validation"
 ```
+
+## 🔒 Security & Reliability
+
+The system includes enterprise-grade security and reliability features:
+
+### Security Features
+- **Input Validation**: All user inputs are validated and sanitized
+- **XSS Protection**: Automatic detection and blocking of malicious scripts
+- **Rate Limiting**: Built-in protection against abuse and spam
+- **Secure Configuration**: Sensitive data properly handled and not exposed
+
+### Reliability Features
+- **Error Recovery**: Comprehensive error handling with graceful degradation
+- **Resource Management**: Automatic cleanup of connections and memory
+- **Checkpoint Recovery**: Long-running operations can resume after failures
+- **Transaction Safety**: Database operations use proper transactions with rollback
+
+### Recent Improvements
+- ✅ Fixed critical runtime bugs in TelegramExtractor
+- ✅ Resolved database path conflicts between SQLite and ChromaDB
+- ✅ Enhanced input validation and sanitization
+- ✅ Improved error handling and resource cleanup
+- ✅ Added comprehensive security checks
 
 ## 📚 Documentation
 
 -   **`docs/workflow_design.md`**: Complete system architecture and workflow documentation
 -   **`docs/knowledge_nugget_schema.md`**: Knowledge nugget data format specification
 -   **`docs/knowledge_synthesis_prompt.md`**: LLM prompting strategies and templates
--   **`docs/qa_extraction_prompt.md`**: Question-answer extraction patterns
+-   **`docs/security_guide.md`**: Security and reliability features documentation
 
 ## 🔧 Development
 

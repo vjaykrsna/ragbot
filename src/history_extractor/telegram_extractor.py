@@ -35,18 +35,36 @@ class TelegramExtractor:
         storage: The storage object.
     """
 
-    def __init__(self, client: Client, storage: Storage):
+    def __init__(self, client: Client, storage: Storage, settings=None, metrics=None):
         """
         Initializes the TelegramExtractor.
 
         Args:
             client: The Pyrogram client instance.
             storage: The storage instance for saving messages.
+            settings: Application settings (optional, will be loaded if not provided).
+            metrics: Metrics instance for tracking (optional, will be created if not provided).
         """
         if not client or not storage:
             raise ValueError("Client and storage are required")
         self.client = client
         self.storage = storage
+
+        # Initialize settings
+        if settings is None:
+            from src.core.config import get_settings
+
+            self.settings = get_settings()
+        else:
+            self.settings = settings
+
+        # Initialize metrics
+        if metrics is None:
+            from src.core.metrics import Metrics
+
+            self.metrics = Metrics()
+        else:
+            self.metrics = metrics
 
     async def extract_from_topic(
         self,
@@ -406,13 +424,7 @@ class TelegramExtractor:
         except Exception as e:
             logger.exception(f"❌ Error processing group {group_id}: {e}")
             self.metrics.record_error("GeneralException")
-            # Implement exponential backoff for retries
-            await retry_with_backoff(
-                lambda: self.extract_from_group_id(
-                    group_id, last_msg_ids, entity, last_msg_ids_lock
-                ),
-                max_retries=3,
-                base_delay=5,
-            )
+            # The function already has retry decorator, so just re-raise to trigger it
+            raise
 
         return total_messages

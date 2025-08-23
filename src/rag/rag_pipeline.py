@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -9,6 +10,30 @@ from src.core.config import AppSettings
 from src.rag import litellm_client
 
 logger = structlog.get_logger(__name__)
+
+
+def sanitize_query_text(text: str) -> str:
+    """
+    Sanitize query text to prevent injection and improve processing.
+
+    Args:
+        text: The input query text
+
+    Returns:
+        Sanitized text safe for processing
+    """
+    if not text:
+        return ""
+
+    # Remove excessive whitespace and normalize
+    sanitized = re.sub(r"\s+", " ", text.strip())
+
+    # Remove potentially harmful patterns
+    sanitized = re.sub(r"[<>]", "", sanitized)  # Remove angle brackets
+    sanitized = re.sub(r"javascript:", "", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"data:", "", sanitized, flags=re.IGNORECASE)
+
+    return sanitized[:2000]  # Limit length
 
 
 class LiteLLMEmbeddingFunction:
@@ -53,13 +78,28 @@ class RAGPipeline:
     def embed_query(self, query_text: str) -> List[float]:
         """Generate embedding for the query. Returns vector as list[float]."""
         try:
+            if not query_text or not query_text.strip():
+                raise ValueError("Query text cannot be empty")
+
             emb = litellm_client.embed([query_text])
             if emb is None or not emb:
-                raise Exception("Embedding failed")
-            return emb[0]
-        except Exception:
-            logger.exception("Failed to generate embedding for query: %s", query_text)
+                raise Exception("Embedding service returned empty result")
+
+            if not isinstance(emb, list) or len(emb) == 0:
+                raise Exception("Invalid embedding format received")
+
+            embedding = emb[0]
+            if not isinstance(embedding, list) or len(embedding) == 0:
+                raise Exception("Invalid embedding vector format")
+
+            return embedding
+
+        except ValueError as e:
+            logger.error("Invalid query text for embedding: %s", e)
             raise
+        except Exception as e:
+            logger.exception("Failed to generate embedding for query: %s", query_text)
+            raise Exception(f"Embedding generation failed: {str(e)}") from e
 
     def retrieve_context(
         self, query_embedding: List[float], n_results: int = 5
@@ -154,22 +194,25 @@ class RAGPipeline:
 
     def query(self, user_query: str) -> str:
         """Run the full pipeline: embed -> retrieve -> generate."""
-        logger.info("Received query: %s", user_query)
+        try:
+            # Sanitize input first
+            sanitized_query = sanitize_query_text(user_query)
+            logger.info("Received query: %s", sanitized_query)
 
-        query_embedding = self.embed_query(user_query)
-        retrieved = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=10,
-            include=["metadatas", "distances"],
-        )
-        nuggets = retrieved.get("metadatas", [[]])[0]
-        distances = retrieved.get("distances", [[]])[0]
+            # Basic input validation
+            if not sanitized_query:
+                return "Please provide a valid question."
 
-        reranked = self.rerank_and_filter_nuggets(nuggets, distances)
-        final = self.generate_response(user_query, reranked[:5])
+            query_embedding = self.embed_query(sanitized_query)
+            context_nuggets = self.retrieve_context(query_embedding, n_results=10)
+            final = self.generate_response(sanitized_query, context_nuggets[:5])
 
-        logger.info("Generated response")
-        return final
+            logger.info("Generated response successfully")
+            return final
+
+        except Exception as e:
+            logger.exception("Error in RAG pipeline query: %s", e)
+            return "I encountered an error while processing your question. Please try again."
 
 
 if __name__ == "__main__":
