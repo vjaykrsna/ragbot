@@ -15,7 +15,7 @@ __pycache__/
 *.session-journal
 
 # Data files
-/data/
+data/
 
 # Log files
 /logs/
