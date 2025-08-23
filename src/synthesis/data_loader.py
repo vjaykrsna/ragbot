@@ -35,7 +35,7 @@ class DataLoader:
 
             # Get all messages from the database using pagination to avoid memory issues
             all_messages = []
-            page_size = 10000  # Process in chunks to avoid memory issues
+            page_size = self.settings.synthesis.page_size  # Configurable page size
             offset = 0
 
             while True:

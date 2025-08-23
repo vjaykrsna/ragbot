@@ -8,10 +8,14 @@ import structlog
 from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
+from src.core.error_handler import (
+    default_alert_manager,
+    handle_critical_errors,
+    retry_with_backoff,
+)
 from src.core.metrics import Metrics
 from src.rag import litellm_client
 from src.synthesis.conversation_optimizer import ConversationOptimizer
-from src.synthesis.decorators import retry_with_backoff
 
 logger = structlog.get_logger(__name__)
 
@@ -36,8 +40,9 @@ class NuggetGenerator:
         self.optimizer = optimizer or ConversationOptimizer()
         self.metrics = Metrics()
 
-    @retry_with_backoff
-    def generate_nuggets_batch(
+    @retry_with_backoff(max_retries=3, initial_wait=2.0, backoff_factor=2.0)
+    @handle_critical_errors(default_alert_manager)
+    def generate_nuggets(
         self, conv_batch: List[Dict[str, Any]], prompt_template: str
     ) -> List[Dict[str, Any]]:
         """

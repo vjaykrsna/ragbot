@@ -1,10 +1,10 @@
 import concurrent.futures
 import hashlib
+import json
 import threading
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
-import chromadb
 import structlog
 from chromadb.api.models.Collection import Collection
 from pyrate_limiter import Duration, Limiter, Rate
@@ -12,6 +12,7 @@ from pyrate_limiter import Duration, Limiter, Rate
 from src.core.app import initialize_app
 from src.core.config import AppSettings
 from src.core.database import Database
+from src.core.error_handler import AlertManager, CheckpointManager
 from src.synthesis.conversation_optimizer import ConversationOptimizer
 from src.synthesis.data_loader import DataLoader
 from src.synthesis.failed_batch_handler import FailedBatchHandler
@@ -31,15 +32,31 @@ class KnowledgeSynthesizer:
     def __init__(
         self,
         settings: AppSettings,
-        db: "Database",
-        db_client: chromadb.Client,
+        db: Database,
+        db_client,
         data_loader: DataLoader,
         nugget_generator: NuggetGenerator,
         nugget_embedder: NuggetEmbedder,
         nugget_store: NuggetStore,
         progress_tracker: ProgressTracker,
         failed_batch_handler: FailedBatchHandler,
+        conversation_optimizer: ConversationOptimizer,
     ):
+        """
+        Initializes the KnowledgeSynthesizer.
+
+        Args:
+            settings: The application settings.
+            db: The database instance.
+            db_client: The database client.
+            data_loader: The data loader instance.
+            nugget_generator: The nugget generator instance.
+            nugget_embedder: The nugget embedder instance.
+            nugget_store: The nugget store instance.
+            progress_tracker: The progress tracker instance.
+            failed_batch_handler: The failed batch handler instance.
+            conversation_optimizer: The conversation optimizer instance.
+        """
         self.settings = settings
         self.db = db
         self.db_client = db_client
@@ -49,8 +66,18 @@ class KnowledgeSynthesizer:
         self.nugget_store = nugget_store
         self.progress_tracker = progress_tracker
         self.failed_batch_handler = failed_batch_handler
-        self.rate = Rate(self.settings.synthesis.requests_per_minute, Duration.MINUTE)
-        self.limiter = Limiter(self.rate, max_delay=60000)
+        self.conversation_optimizer = conversation_optimizer
+
+        # Initialize error handling components
+        self.checkpoint_manager = CheckpointManager(
+            settings.paths.synthesis_checkpoint_file
+        )
+        self.alert_manager = AlertManager()
+
+        # Rate limiting for API calls
+        self.limiter = Limiter(
+            Rate(settings.synthesis.requests_per_minute, Duration.MINUTE)
+        )
 
     def run(self) -> None:
         """Executes the entire synthesis pipeline."""
@@ -84,74 +111,145 @@ class KnowledgeSynthesizer:
         )
         return collection
 
-    def _synthesize_and_populate(
-        self,
-        conversations: List[Dict[str, Any]],
-        prompt_template: str,
-        collection: Collection,
-    ) -> None:
-        """Processes all conversations in batches and populates the database."""
-        last_processed_index = self.progress_tracker.load_progress()
-        start_index = last_processed_index + 1
+    def synthesize_and_populate(self, collection_name: str = "knowledge_base") -> None:
+        """
+        Main entry point for the knowledge synthesis and population process.
 
-        if start_index >= len(conversations):
-            logger.info("All conversations have already been processed.")
+        Args:
+            collection_name: The name of the ChromaDB collection to populate.
+        """
+        logger.info("🚀 Starting Knowledge Base v2 Synthesis")
+
+        # Load the prompt template
+        prompt_template = self.data_loader.load_prompt_template()
+
+        # Get the database collection
+        collection = self._get_or_create_collection(collection_name)
+
+        # Load conversations with checkpoint recovery
+        conversations = self.data_loader.load_processed_data()
+        logger.info(f"Loaded {len(conversations)} conversations from database.")
+
+        if not conversations:
+            logger.info("No conversations found. Nothing to process.")
             return
 
-        logger.info(f"Resuming from conversation index {start_index}")
-
-        # Apply conversation optimization before batching, but process in chunks to manage memory
+        # Apply conversation optimization
         logger.info("Applying conversation optimization...")
-        optimized_conversations = []
-
-        # Process conversations in chunks to avoid memory issues
-        chunk_size = max(
-            100, self.settings.synthesis.batch_size * 2
-        )  # Process in larger chunks
-        for i in range(start_index, len(conversations), chunk_size):
-            chunk_end = min(i + chunk_size, len(conversations))
-            chunk = conversations[i:chunk_end]
-            optimized_chunk = self.nugget_generator.optimizer.optimize_batch(chunk)
-            optimized_conversations.extend(optimized_chunk)
-            logger.info(
-                f"Optimized conversations {i}-{chunk_end - 1} of {len(conversations)}"
-            )
-
+        optimized_conversations = self.conversation_optimizer.optimize_conversations(
+            conversations
+        )
         logger.info(
-            f"Optimization complete: {len(optimized_conversations)} high-quality conversations ready for processing"
+            f"Optimization complete. Reduced from {len(conversations)} to {len(optimized_conversations)} conversations."
         )
 
+        # Load checkpoint if available
+        checkpoint_data = self.checkpoint_manager.load_checkpoint()
+        start_index = checkpoint_data.get("last_processed_index", 0)
+        processed_hashes = set(checkpoint_data.get("processed_hashes", []))
+
+        # If no checkpoint, load from progress tracker
+        if start_index == 0:
+            start_index = self.progress_tracker.load_progress() + 1
+        if not processed_hashes:
+            processed_hashes = self.progress_tracker.load_processed_hashes()
+
+        # If we're resuming from a checkpoint, adjust our conversation list
+        if start_index > 0:
+            logger.info(f"Resuming from conversation index {start_index}")
+            if start_index < len(optimized_conversations):
+                optimized_conversations = optimized_conversations[start_index:]
+            else:
+                logger.info("All conversations have already been processed.")
+                return
+
+        # Process conversations in batches
         batch_size = self.settings.synthesis.batch_size
         batches = [
             optimized_conversations[i : i + batch_size]
             for i in range(0, len(optimized_conversations), batch_size)
         ]
 
-        processed_hashes = self.progress_tracker.load_processed_hashes()
-        total_nuggets_stored = 0
+        if not batches:
+            logger.info("No batches to process.")
+            return
 
-        completed_batches = 0
+        logger.info(
+            f"Processing {len(batches)} batches of {batch_size} conversations each."
+        )
+
+        # Process batches with checkpointing
+        self._process_batches_with_checkpointing(
+            batches,
+            prompt_template,
+            collection,
+            start_index,
+            processed_hashes,
+            batch_size,
+        )
+
+        # Clear checkpoint on successful completion
+        self.checkpoint_manager.clear_checkpoint()
+
+        logger.info("✅ Knowledge base synthesis complete.")
+
+    def _process_batches_with_checkpointing(
+        self,
+        batches: List[List[Dict[str, Any]]],
+        prompt_template: str,
+        collection: Collection,
+        start_index: int,
+        processed_hashes: Set[str],
+        batch_size: int,
+    ) -> None:
+        """
+        Process conversation batches with checkpoint-based recovery.
+
+        Args:
+            batches: List of conversation batches to process.
+            prompt_template: The prompt template for nugget generation.
+            collection: The ChromaDB collection to store nuggets.
+            start_index: The starting index for processing.
+            processed_hashes: Set of already processed batch hashes.
+            batch_size: The size of each batch.
+        """
         total_batches = len(batches)
+        completed_batches = 0
+        total_nuggets_stored = 0
+        batch_index_to_hash = {}
+
+        # Create a hash for each batch to track progress
+        for i, batch in enumerate(batches):
+            batch_content = json.dumps(batch, sort_keys=True)
+            batch_hash = hashlib.md5(batch_content.encode()).hexdigest()
+            batch_index_to_hash[i] = batch_hash
 
         # Thread-safe locks for shared resources
-        progress_lock = threading.Lock()
-        hashes_lock = threading.Lock()
         stats_lock = threading.Lock()
+        hashes_lock = threading.Lock()
+        progress_lock = threading.Lock()
 
+        logger.info(
+            f"Starting batch processing: {total_batches} batches, {batch_size} items each"
+        )
+
+        # Process batches with thread pool
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.settings.synthesis.max_workers
         ) as executor:
             future_to_batch_index = {}
-            batch_index_to_hash = {}
+
+            # Submit all batches to the executor
             for i, batch in enumerate(batches):
-                bh = self._batch_hash(batch)
-                batch_index_to_hash[i] = bh
-                if bh in processed_hashes:
+                # Check if batch has already been processed
+                bh = batch_index_to_hash.get(i)
+                if bh and bh in processed_hashes:
                     logger.info(
                         f"Skipping already-processed batch {i + 1}/{total_batches} (hash={bh})"
                     )
                     completed_batches += 1
                     continue
+
                 fut = executor.submit(
                     self._process_conversation_batch,
                     batch,
@@ -160,6 +258,7 @@ class KnowledgeSynthesizer:
                 )
                 future_to_batch_index[fut] = i
 
+            # Process completed futures
             for future in concurrent.futures.as_completed(future_to_batch_index):
                 batch_index = future_to_batch_index[future]
                 try:
@@ -172,11 +271,22 @@ class KnowledgeSynthesizer:
                         with stats_lock:
                             total_nuggets_stored += num_stored
                         last_item_in_batch = len(batches[batch_index]) - 1
-                        # Since we're working with optimized conversations, adjust the index calculation
+                        # Calculate the actual index in the original conversation list
                         new_last_processed_index = (
                             start_index + batch_index * batch_size + last_item_in_batch
                         )
+
+                        # Save checkpoint
                         with progress_lock:
+                            self.checkpoint_manager.save_checkpoint(
+                                last_processed_index=new_last_processed_index,
+                                processed_hashes=list(processed_hashes),
+                                total_nuggets_stored=total_nuggets_stored,
+                                completed_batches=completed_batches + 1,
+                                total_batches=total_batches,
+                            )
+
+                            # Also save to progress tracker for backward compatibility
                             self.progress_tracker.save_progress(
                                 new_last_processed_index
                             )
@@ -185,12 +295,18 @@ class KnowledgeSynthesizer:
                         f"An error occurred while processing batch index {batch_index}: {e}",
                         exc_info=True,
                     )
+                    # Send alert for critical failures
+                    self.alert_manager.send_alert(
+                        f"Critical error processing batch {batch_index}", exception=e
+                    )
+
                 with stats_lock:
                     completed_batches += 1
                 logger.info(
                     f"Progress: {completed_batches}/{total_batches} batches completed (Total nuggets stored: {total_nuggets_stored})"
                 )
 
+        # Save final processed hashes
         with hashes_lock:
             self.progress_tracker.save_processed_hashes(processed_hashes)
 
@@ -288,6 +404,7 @@ def main() -> None:
         nugget_store,
         progress_tracker,
         failed_batch_handler,
+        optimizer,  # conversation_optimizer
     )
     synthesizer.run()
 

@@ -169,6 +169,7 @@ class SynthesisSettings:
     max_workers: int = 4  # Reduced from 6
     requests_per_minute: int = 180  # Back to original
     batch_size: int = 8  # Back to original
+    page_size: int = 10000  # Page size for database pagination
 
 
 @dataclass

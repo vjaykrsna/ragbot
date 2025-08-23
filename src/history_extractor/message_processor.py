@@ -70,8 +70,9 @@ def get_message_details(msg) -> Tuple[str, Any, Dict[str, Any]]:
 
                 return "poll", poll_content, extra_data
 
-            except Exception:
+            except Exception as poll_error:
                 # If poll processing fails, fall back to text but keep extra_data
+                extra_data["poll_processing_error"] = str(poll_error)
                 return "text", content, extra_data
 
         # Default to text message if no other type is detected

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+import threading
 
 import structlog
 from pyrogram import Client
@@ -83,10 +84,8 @@ async def main():
 
         logging.info(f"🚀 Starting extraction of {len(group_ids)} groups...")
 
-        # Create a copy of last_msg_ids for thread-safe access
-        import copy
-
-        last_msg_ids_copy = copy.deepcopy(last_msg_ids)
+        # Create a lock for thread-safe access to shared data
+        last_msg_ids_lock = threading.Lock()
 
         # Process groups concurrently based on the concurrent_groups setting
         semaphore = asyncio.Semaphore(settings.telegram.extraction.concurrent_groups)
@@ -112,22 +111,10 @@ async def main():
                         f'📂 Processing group {i}/{total_groups}: "{group_name}"'
                     )
 
-                    # Process this group with its own copy of last_msg_ids
-                    # Note: This approach avoids race conditions but means progress tracking
-                    # is not shared between concurrent groups
-                    local_last_msg_ids = copy.deepcopy(last_msg_ids_copy)
+                    # Process this group with thread-safe access to last_msg_ids
                     await extractor.extract_from_group_id(
-                        gid, local_last_msg_ids, entity
+                        gid, last_msg_ids, entity, last_msg_ids_lock
                     )
-
-                    # Update the shared last_msg_ids with the results from this group
-                    # This needs to be done in a thread-safe manner
-                    for key, value in local_last_msg_ids.items():
-                        if (
-                            key not in last_msg_ids_copy
-                            or value > last_msg_ids_copy[key]
-                        ):
-                            last_msg_ids_copy[key] = value
 
                     logging.info(
                         f'✅ Completed group {i}/{total_groups}: "{group_name}"'
@@ -148,9 +135,6 @@ async def main():
 
         # Wait for all tasks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Update the original last_msg_ids with the results
-        last_msg_ids.update(last_msg_ids_copy)
 
         # Check results for any exceptions
         for i, result in enumerate(results, 1):

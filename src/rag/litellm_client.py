@@ -9,12 +9,17 @@ flags (cache=True) and logging.
 import os
 import time
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import litellm
 import structlog
 
 from src.core.config import get_settings
+from src.core.error_handler import (
+    default_alert_manager,
+    handle_critical_errors,
+    retry_with_backoff,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -47,9 +52,16 @@ def _get_router() -> litellm.Router:
     return _router
 
 
+@retry_with_backoff(max_retries=3, initial_wait=1.0, backoff_factor=2.0)
+@handle_critical_errors(default_alert_manager)
 def complete(
-    prompt_messages: List[Dict[str, str]], max_retries: int = None
-) -> Optional[Any]:
+    messages: List[Dict[str, str]],
+    model: Optional[str] = None,
+    temperature: float = 0,
+    max_tokens: Optional[int] = None,
+    timeout: float = 60.0,
+    max_retries: int = 1,
+) -> str:
     """Call router.completion with retries. Returns the raw response or None."""
     if max_retries is None:
         max_retries = int(os.getenv("COMPLETION_MAX_RETRIES", "3"))
@@ -61,7 +73,7 @@ def complete(
         try:
             resp = router.completion(
                 model=synthesis_model_name,  # Target the synthesis model group
-                messages=prompt_messages,
+                messages=messages,
             )
             return resp
         except Exception as e:
@@ -77,13 +89,16 @@ def complete(
     return None
 
 
-def embed(texts: List[str], max_retries: int = None) -> Optional[List[List[float]]]:
+@retry_with_backoff(max_retries=3, initial_wait=1.0, backoff_factor=2.0)
+@handle_critical_errors(default_alert_manager)
+def embed(
+    texts: List[str], model: Optional[str] = None, max_retries: Optional[int] = None
+) -> List[List[float]]:
     """Call router.embedding with retries. Returns list of vectors or None."""
-    if max_retries is None:
-        max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "2"))
-
     router = _get_router()
     embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-model")
+    if max_retries is None:
+        max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "2"))
 
     for attempt in range(max_retries):
         try:

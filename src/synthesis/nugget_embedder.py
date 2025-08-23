@@ -7,8 +7,8 @@ from litellm import APIError
 from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
+from src.core.error_handler import retry_with_backoff
 from src.rag import litellm_client
-from src.synthesis.decorators import retry_with_backoff
 
 logger = structlog.get_logger(__name__)
 

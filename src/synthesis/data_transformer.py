@@ -43,7 +43,10 @@ class DataTransformer:
         # Group messages by source_group_id and topic_id to form conversations
         grouped_messages = defaultdict(list)
         for msg in messages:
-            key = (msg["source_group_id"], msg["topic_id"])
+            # Use safe access with defaults for required fields
+            source_group_id = msg.get("source_group_id", 0)
+            topic_id = msg.get("topic_id", 0)
+            key = (source_group_id, topic_id)
             grouped_messages[key].append(msg)
 
         # Convert grouped messages into conversation format expected by synthesis
@@ -64,24 +67,24 @@ class DataTransformer:
 
                 # Create message with only the fields expected by synthesis
                 processed_msg = {
-                    "id": msg["id"],
-                    "date": msg["date"],
-                    "sender_id": msg["sender_id"],
-                    "content": msg["content"],
+                    "id": msg.get("id", 0),
+                    "date": msg.get("date", ""),
+                    "sender_id": msg.get("sender_id", ""),
+                    "content": msg.get("content", ""),
                     "normalized_values": normalized_values,
                 }
                 processed_messages.append(processed_msg)
 
             # Create conversation envelope
             conversation = {
-                "ingestion_timestamp": conv_messages[0]["ingestion_timestamp"]
+                "ingestion_timestamp": conv_messages[0].get("ingestion_timestamp", "")
                 if conv_messages
                 else "",
                 "ingestion_hash": f"{source_group_id}_{topic_id}",  # Simple hash for now
-                "source_files": [conv_messages[0]["source_name"]]
+                "source_files": [conv_messages[0].get("source_name", "")]
                 if conv_messages
                 else [],
-                "source_names": [conv_messages[0]["source_name"]]
+                "source_names": [conv_messages[0].get("source_name", "")]
                 if conv_messages
                 else [],
                 "conversation": processed_messages,

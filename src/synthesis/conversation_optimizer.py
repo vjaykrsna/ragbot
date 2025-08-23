@@ -159,7 +159,7 @@ class ConversationOptimizer:
 
     def _should_process_conversation(self, conv: Dict[str, Any]) -> bool:
         """Determine if a conversation is worth processing."""
-        messages = conv.get("messages", [])
+        messages = conv.get("conversation", []) or conv.get("messages", [])
 
         # Must have at least 2 messages
         if len(messages) < 2:
@@ -213,7 +213,7 @@ class ConversationOptimizer:
 
     def _generate_content_hash(self, conv: Dict[str, Any]) -> str:
         """Generate a hash representing the conversation content."""
-        messages = conv.get("messages", [])
+        messages = conv.get("conversation", []) or conv.get("messages", [])
         content_parts = []
 
         for msg in messages:
@@ -227,7 +227,7 @@ class ConversationOptimizer:
 
     def _calculate_quality_score(self, conv: Dict[str, Any]) -> float:
         """Calculate a quality score for conversation prioritization."""
-        messages = conv.get("messages", [])
+        messages = conv.get("conversation", []) or conv.get("messages", [])
         if not messages:
             return 0.0
 

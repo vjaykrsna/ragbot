@@ -9,7 +9,11 @@ from pyrogram.errors import FloodWait
 from pyrogram.raw.functions.channels import GetForumTopics
 from pyrogram.raw.types import InputChannel
 
-from src.core.metrics import Metrics
+from src.core.error_handler import (
+    default_alert_manager,
+    handle_critical_errors,
+    retry_with_backoff,
+)
 from src.history_extractor.memory_utils import (
     calculate_dynamic_batch_size,
     estimate_message_size,
@@ -32,14 +36,24 @@ class TelegramExtractor:
     """
 
     def __init__(self, client: Client, storage: Storage):
+        """
+        Initializes the TelegramExtractor.
+
+        Args:
+            client: The Pyrogram client instance.
+            storage: The storage instance for saving messages.
+        """
+        if not client or not storage:
+            raise ValueError("Client and storage are required")
         self.client = client
         self.storage = storage
-        # Get settings from storage's app_context
-        self.settings = storage.app_context.settings.telegram.extraction
-        self.metrics = Metrics()
 
     async def extract_from_topic(
-        self, entity: Any, topic: Any, last_msg_ids: Dict[str, int]
+        self,
+        entity: Any,
+        topic: Any,
+        last_msg_ids: Dict[str, int],
+        last_msg_ids_lock=None,
     ) -> int:
         """
         Extracts all new messages from a specific group topic or regular group.
@@ -63,13 +77,15 @@ class TelegramExtractor:
         start_time = time.time()
         start_time_dt = datetime.now()
 
-        # Process messages with streaming approach to avoid memory issues
+        # Initialize variables at the start of the method
+        message_size_estimate = 0  # Initialize with default value
         batch_size = self.settings.extraction.batch_size  # Use configurable batch size
         message_batch = []
         total_saved = 0
         processed_count = 0
         saved_count = 0
-        last_update_time_dt = start_time_dt
+        max_id = 0
+        last_update_time_dt = start_time_dt  # Initialize with start time
 
         logger.info(
             f"  - 📥 Extracting from topic: '{topic_title}' (ID: {topic_id}) [Since message ID > {last_id}]"
@@ -230,9 +246,13 @@ class TelegramExtractor:
             total_saved += len(message_batch)
             self.metrics.record_messages(len(message_batch))
 
-        # Update last message ID
+        # Update last message ID with thread-safe access
         if total_saved > 0 and max_id > 0:
-            last_msg_ids[last_id_key] = max_id
+            if last_msg_ids_lock:
+                with last_msg_ids_lock:
+                    last_msg_ids[last_id_key] = max_id
+            else:
+                last_msg_ids[last_id_key] = max_id
 
         # Log final metrics
         if total_saved > 0:
@@ -271,8 +291,14 @@ class TelegramExtractor:
 
         return total_saved
 
+    @retry_with_backoff(max_retries=3, initial_wait=5.0, backoff_factor=2.0)
+    @handle_critical_errors(default_alert_manager)
     async def extract_from_group_id(
-        self, group_id: int, last_msg_ids: Dict[str, int], entity=None
+        self,
+        group_id: int,
+        last_msg_ids: Dict[int, int],
+        entity=None,
+        last_msg_ids_lock=None,
     ) -> int:
         """
         Extracts messages from a specific group ID.
@@ -298,7 +324,7 @@ class TelegramExtractor:
             try:
                 # Create InputChannel object for Pyrogram
                 input_channel = InputChannel(
-                    channel_id=entity.id,
+                    channel_id=getattr(entity, "channel_id", entity.id),
                     access_hash=getattr(entity, "access_hash", 0),
                 )
 
@@ -336,7 +362,9 @@ class TelegramExtractor:
                     logger.info(
                         f"📊 Processing topic {i}/{len(topics)}: '{topic_title}'"
                     )
-                    count = await self.extract_from_topic(entity, topic, last_msg_ids)
+                    count = await self.extract_from_topic(
+                        entity, topic, last_msg_ids, last_msg_ids_lock
+                    )
                     total_messages += count
             else:
                 # Check if it's marked as a forum but has no topics, or if it's a regular group
@@ -347,11 +375,16 @@ class TelegramExtractor:
                     logger.info(
                         "  - This is a regular group. Extracting from main chat."
                     )
-                    general_topic = type(
-                        "obj", (object,), {"id": 0, "title": "General"}
-                    )()
+
+                    # Create a proper GeneralTopic object instead of using type() hack
+                    class GeneralTopic:
+                        def __init__(self):
+                            self.id = 0
+                            self.title = "General"
+
+                    general_topic = GeneralTopic()
                     count = await self.extract_from_topic(
-                        entity, general_topic, last_msg_ids
+                        entity, general_topic, last_msg_ids, last_msg_ids_lock
                     )
                     total_messages += count
         except FloodWait as fwe:
@@ -366,11 +399,20 @@ class TelegramExtractor:
                     logger.info(f"Waiting for {wait_time} more seconds...")
                 await asyncio.sleep(min(30, wait_time))
                 wait_time -= 30
+            # Retry after flood wait
             total_messages = await self.extract_from_group_id(
-                group_id, last_msg_ids, entity
-            )  # Retry
+                group_id, last_msg_ids, entity, last_msg_ids_lock
+            )
         except Exception as e:
             logger.exception(f"❌ Error processing group {group_id}: {e}")
             self.metrics.record_error("GeneralException")
+            # Implement exponential backoff for retries
+            await retry_with_backoff(
+                lambda: self.extract_from_group_id(
+                    group_id, last_msg_ids, entity, last_msg_ids_lock
+                ),
+                max_retries=3,
+                base_delay=5,
+            )
 
         return total_messages
