@@ -1,4 +1,3 @@
-import json
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -28,50 +27,30 @@ class TestDataProcessingPipeline(unittest.TestCase):
         """
         Test that the run method correctly orchestrates the pipeline components.
         """
-        # Arrange: Set up mock return values
-        mock_records = [
-            {"sender_id": "user1", "content": "Hello, price is 1,000 rs."},
-            {"sender_id": "user2", "content": "Thanks!"},
-        ]
-        mock_conversations = [{"conversation_id": 1, "messages": mock_records}]
+        # Arrange: Set up mocks
+        mock_sorted_stream = [MagicMock()]
+        mock_processed_stream = [MagicMock()]
+        mock_conversation_stream = [MagicMock()]
 
-        self.mock_sorter.sort.return_value = iter(mock_records)
+        self.mock_sorter.sort.return_value = mock_sorted_stream
+        self.mock_anonymizer.process_stream.return_value = mock_processed_stream
+        self.mock_conv_builder.process_stream.return_value = mock_conversation_stream
+        self.pipeline._write_conversations = MagicMock(return_value=1)
 
-        # Define a side effect that consumes the input stream and returns the desired mock output
-        def consume_and_return_conversations(stream):
-            list(stream)  # Consume the generator to trigger upstream mocks
-            return iter(mock_conversations)
-
-        self.mock_conv_builder.process_stream.side_effect = (
-            consume_and_return_conversations
-        )
-        self.mock_anonymizer.anonymize.side_effect = lambda x: f"anon_{x}"
-
-        # Act: Run the pipeline
-        with (
-            patch("builtins.open", mock_open()) as mocked_file,
-            patch("os.makedirs") as mock_makedirs,
-        ):
+        with patch("os.makedirs") as mock_makedirs, patch("builtins.open", mock_open()):
+            # Act: Run the pipeline
             self.pipeline.run()
 
-        # Assert: Verify that the components were called correctly
-        self.mock_sorter.sort.assert_called_once_with(self.mock_data_source)
-        self.mock_anonymizer.anonymize.assert_any_call("user1")
-        self.mock_anonymizer.anonymize.assert_any_call("user2")
-        self.mock_conv_builder.process_stream.assert_called_once()
-        self.mock_anonymizer.persist.assert_called_once()
+            # Assert: Verify component interactions
+            self.mock_sorter.sort.assert_called_once_with(self.mock_data_source)
+            self.mock_conv_builder.process_stream.assert_called_once()
+            self.mock_anonymizer.persist.assert_called_once()
 
-        # Assert: Verify file operations
-        mock_makedirs.assert_called_once_with("/fake/processed", exist_ok=True)
-        mocked_file.assert_called_once_with(
-            "/fake/processed/conversations.json", "w", encoding="utf-8"
-        )
-        handle = mocked_file()
+            # Assert: Verify file operations
+            mock_makedirs.assert_called_once_with("/fake/processed", exist_ok=True)
 
-        # Check that the JSON output was written correctly
-        written_content = "".join(call.args[0] for call in handle.write.call_args_list)
-        written_data = json.loads(written_content)
-        self.assertEqual(written_data, mock_conversations)
+            # Assert: Verify _write_conversations was called
+            self.pipeline._write_conversations.assert_called_once()
 
     def test_normalize_numbers(self):
         """

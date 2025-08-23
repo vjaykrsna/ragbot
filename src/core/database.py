@@ -2,7 +2,6 @@ import os
 import sqlite3
 import threading
 from contextlib import contextmanager
-from queue import Queue
 from typing import Any, Dict, List
 
 from src.core.config import PathSettings
@@ -17,52 +16,47 @@ class Database:
             # Create an empty file to ensure SQLite can connect
             with open(self.db_path, "w"):
                 pass
-        # Initialize connection pool
-        self.connection_pool = Queue(maxsize=pool_size)
-        self.pool_lock = threading.Lock()
-        # Pre-populate the pool with connections
-        for _ in range(pool_size):
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.execute(
-                "PRAGMA journal_mode=WAL"
-            )  # Enable WAL mode for better concurrency
-            conn.execute("PRAGMA synchronous=NORMAL")  # Optimize for performance
-            conn.execute("PRAGMA cache_size=5000")  # Balanced cache size
-            conn.execute("PRAGMA temp_store=MEMORY")  # Use memory for temp storage
-            self._create_tables(conn)
-            self.connection_pool.put(conn)
+        # Use thread-local storage for connections to ensure thread safety
+        self.local = threading.local()
+        # Initialize shared connection for table creation
+        self.shared_conn = sqlite3.connect(self.db_path)
+        self.shared_conn.execute(
+            "PRAGMA journal_mode=WAL"
+        )  # Enable WAL mode for better concurrency
+        self.shared_conn.execute(
+            "PRAGMA synchronous=NORMAL"
+        )  # Optimize for performance
+        self.shared_conn.execute("PRAGMA cache_size=5000")  # Balanced cache size
+        self.shared_conn.execute(
+            "PRAGMA temp_store=MEMORY"
+        )  # Use memory for temp storage
+        self._create_tables(self.shared_conn)
+        self.shared_conn.close()
+
+    def _get_thread_local_connection(self):
+        """Get a thread-local connection to the database."""
+        if not hasattr(self.local, "connection"):
+            # Create a new connection for this thread
+            self.local.connection = sqlite3.connect(self.db_path)
+            self.local.connection.execute("PRAGMA journal_mode=WAL")
+            self.local.connection.execute("PRAGMA synchronous=NORMAL")
+            self.local.connection.execute("PRAGMA cache_size=5000")
+            self.local.connection.execute("PRAGMA temp_store=MEMORY")
+        return self.local.connection
 
     @contextmanager
     def _get_connection(self):
-        conn = self._get_pooled_connection()
+        """Get a thread-safe connection to the database."""
+        conn = self._get_thread_local_connection()
         try:
-            # Create tables if they don't exist (though they should already exist)
+            # Ensure tables exist (though they should already exist)
             self._create_tables(conn)
             yield conn
-        finally:
-            self._return_connection(conn)
-
-    def _get_pooled_connection(self):
-        """Get a connection from the pool or create a new one if pool is empty."""
-        try:
-            return self.connection_pool.get(timeout=1)
-        except Queue.Empty:
-            # Create new connection if pool is empty
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA cache_size=5000")
-            conn.execute("PRAGMA temp_store=MEMORY")
-            self._create_tables(conn)
-            return conn
-
-    def _return_connection(self, conn):
-        """Return a connection to the pool or close it if pool is full."""
-        try:
-            self.connection_pool.put(conn, timeout=1)
-        except Queue.Full:
-            # Close connection if pool is full
-            conn.close()
+        except Exception as e:
+            conn.rollback()
+            raise e
+        else:
+            conn.commit()
 
     def _create_tables(self, conn: sqlite3.Connection):
         cursor = conn.cursor()
@@ -82,35 +76,6 @@ class Database:
                 source_name TEXT,
                 ingestion_timestamp TEXT,
                 PRIMARY KEY (id, source_group_id, topic_id)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS polls (
-                message_id INTEGER,
-                source_group_id INTEGER,
-                topic_id INTEGER,
-                question TEXT,
-                total_voter_count INTEGER,
-                is_quiz BOOLEAN,
-                is_anonymous BOOLEAN,
-                PRIMARY KEY (message_id, source_group_id, topic_id)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS poll_options (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                poll_id INTEGER,
-                poll_source_group_id INTEGER,
-                poll_topic_id INTEGER,
-                text TEXT,
-                voters INTEGER,
-                chosen BOOLEAN,
-                correct BOOLEAN,
-                FOREIGN KEY (poll_id, poll_source_group_id, poll_topic_id) REFERENCES polls (message_id, source_group_id, topic_id)
             )
             """
         )
@@ -137,104 +102,37 @@ class Database:
 
         # Prepare data for batch insertion
         message_data = []
-        poll_data = []
-        poll_options_data = []
 
         for msg in messages:
-            if msg["message_type"] == "poll":
-                poll_content = msg["content"]
-                poll_data.append(
-                    (
-                        msg["id"],
-                        poll_content["question"],
-                        poll_content["total_voters"],
-                        poll_content["is_quiz"],
-                        poll_content["is_anonymous"],
-                    )
+            # For all message types including polls, store in the main messages table
+            # Poll data is already serialized in the content or extra_data fields
+            message_data.append(
+                (
+                    msg["id"],
+                    msg["source_group_id"],
+                    msg["topic_id"],
+                    msg["date"],
+                    msg["sender_id"],
+                    msg["message_type"],
+                    msg["content"],
+                    str(msg["extra_data"]),
+                    msg["reply_to_msg_id"],
+                    msg["topic_title"],
+                    msg["source_name"],
+                    msg["ingestion_timestamp"],
                 )
-                # Also add to messages table with question as content
-                message_data.append(
-                    (
-                        msg["id"],
-                        msg["date"],
-                        msg["sender_id"],
-                        msg["message_type"],
-                        poll_content["question"],
-                        str(msg["extra_data"]),
-                        msg["reply_to_msg_id"],
-                        msg["topic_id"],
-                        msg["topic_title"],
-                        msg["source_name"],
-                        msg["source_group_id"],
-                        msg["source_topic_id"],
-                        msg["source_saved_file"],
-                        msg["ingestion_timestamp"],
-                    )
-                )
-                for option in poll_content["options"]:
-                    poll_options_data.append(
-                        (
-                            msg["id"],
-                            option["text"],
-                            option["voters"],
-                            option.get("chosen", False),
-                            option.get("correct", False),
-                        )
-                    )
-            else:
-                message_data.append(
-                    (
-                        msg["id"],
-                        msg["date"],
-                        msg["sender_id"],
-                        msg["message_type"],
-                        msg["content"],
-                        str(msg["extra_data"]),
-                        msg["reply_to_msg_id"],
-                        msg["topic_id"],
-                        msg["topic_title"],
-                        msg["source_name"],
-                        msg["source_group_id"],
-                        msg["source_topic_id"],
-                        msg["source_saved_file"],
-                        msg["ingestion_timestamp"],
-                    )
-                )
+            )
 
         # Batch insert messages with executemany for better performance
         if message_data:
             cursor.executemany(
                 """
                 INSERT OR REPLACE INTO messages (
-                    id, date, sender_id, message_type, content, extra_data,
-                    reply_to_msg_id, topic_id, topic_title, source_name,
-                    source_group_id, source_topic_id, source_saved_file,
-                    ingestion_timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+                    id, source_group_id, topic_id, date, sender_id, message_type, content, extra_data,
+                    reply_to_msg_id, topic_title, source_name, ingestion_timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 message_data,
-            )
-
-        # Batch insert polls
-        if poll_data:
-            cursor.executemany(
-                """
-                INSERT OR REPLACE INTO polls (
-                    message_id, question, total_voters, is_quiz, is_anonymous
-                ) VALUES (?, ?, ?, ?, ?)
-            """,
-                poll_data,
-            )
-
-        # Batch insert poll options
-        if poll_options_data:
-            cursor.executemany(
-                """
-                INSERT INTO poll_options (
-                    poll_id, text, voters, chosen, correct
-                ) VALUES (?, ?, ?, ?, ?)
-            """,
-                poll_options_data,
             )
 
     def _insert_message(self, cursor, msg: Dict[str, Any]):
@@ -261,44 +159,6 @@ class Database:
                 msg["ingestion_timestamp"],
             ),
         )
-
-    def _insert_poll(self, cursor, msg: Dict[str, Any]):
-        poll_content = msg["content"]
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO polls (
-                message_id, source_group_id, topic_id, question, total_voter_count, is_quiz, is_anonymous
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                msg["id"],
-                msg["source_group_id"],
-                msg["topic_id"],
-                poll_content["question"],
-                poll_content["total_voter_count"],
-                poll_content["is_quiz"],
-                poll_content["is_anonymous"],
-            ),
-        )
-        for option in poll_content["options"]:
-            cursor.execute(
-                """
-                INSERT INTO poll_options (
-                    poll_id, poll_source_group_id, poll_topic_id, text, voters, chosen, correct
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    msg["id"],
-                    msg["source_group_id"],
-                    msg["topic_id"],
-                    option["text"],
-                    option["voter_count"],
-                    option.get("chosen", False),
-                    option.get("correct", False),
-                ),
-            )
-        # Also insert a reference into the messages table
-        self._insert_message(cursor, {**msg, "content": poll_content["question"]})
 
     def get_all_messages(self):
         with self._get_connection() as conn:

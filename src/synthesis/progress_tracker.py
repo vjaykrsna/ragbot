@@ -1,11 +1,12 @@
 import json
-import logging
 import os
 from typing import Set
 
+import structlog
+
 from src.core.config import AppSettings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ProgressTracker:

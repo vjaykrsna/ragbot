@@ -3,11 +3,14 @@ import logging
 import os
 import sqlite3
 
+import structlog
 from pyrogram import Client
 
 from src.core.app import initialize_app
 from src.history_extractor.storage import Storage
 from src.history_extractor.telegram_extractor import TelegramExtractor
+
+logger = structlog.get_logger(__name__)
 
 
 async def main():
@@ -65,41 +68,102 @@ async def main():
         group_ids = settings.telegram.group_ids
         last_msg_ids = storage.load_last_msg_ids()
 
-        # Display group list upfront
+        # Display group list upfront and cache group info to avoid redundant API calls
         logging.info(f"🏢 Groups to process ({len(group_ids)} total):")
+        group_cache = {}  # Cache to store group info and avoid redundant API calls
         for i, gid in enumerate(group_ids, 1):
             try:
                 entity = await client.get_chat(gid)
+                group_cache[gid] = entity  # Cache the group info
                 group_name = getattr(entity, "title", f"Group {gid}")
                 logging.info(f"  {i:2d}. {group_name}")
             except Exception:
                 logging.info(f"  {i:2d}. Group {gid} (name unavailable)")
-                group_name = f"Group {gid}"  # Set default name for error handling
+                group_cache[gid] = None  # Cache the failure
 
         logging.info(f"🚀 Starting extraction of {len(group_ids)} groups...")
 
-        # Process each group
-        for i, gid in enumerate(group_ids, 1):
-            group_name = f"Group {gid}"  # Default name
-            try:
-                # Get group info for better display
-                entity = await client.get_chat(gid)
-                group_name = getattr(entity, "title", f"Group {gid}")
-                logging.info(
-                    f'📂 Processing group {i}/{len(group_ids)}: "{group_name}"'
-                )
+        # Create a copy of last_msg_ids for thread-safe access
+        import copy
 
-                # Process this group
-                await extractor.extract_from_group_id(gid, last_msg_ids)
+        last_msg_ids_copy = copy.deepcopy(last_msg_ids)
 
-                logging.info(f'✅ Completed group {i}/{len(group_ids)}: "{group_name}"')
+        # Process groups concurrently based on the concurrent_groups setting
+        semaphore = asyncio.Semaphore(settings.telegram.extraction.concurrent_groups)
 
-            except Exception as e:
-                logging.error(
-                    f'❌ Failed to process group {i}/{len(group_ids)} "{group_name}": {e}'
-                )
+        async def process_group_with_semaphore(gid, i, total_groups):
+            """Process a single group with semaphore control for concurrency limiting"""
+            async with semaphore:
+                group_name = f"Group {gid}"  # Default name
+                try:
+                    # Get group info from cache to avoid redundant API calls
+                    entity = group_cache.get(gid)
+                    if entity is None:
+                        # If not in cache or failed previously, try to fetch it
+                        entity = await client.get_chat(gid)
+                        group_cache[gid] = entity  # Update cache
 
-        storage.save_last_msg_ids(last_msg_ids)
+                    group_name = (
+                        getattr(entity, "title", f"Group {gid}")
+                        if entity
+                        else f"Group {gid}"
+                    )
+                    logging.info(
+                        f'📂 Processing group {i}/{total_groups}: "{group_name}"'
+                    )
+
+                    # Process this group with its own copy of last_msg_ids
+                    # Note: This approach avoids race conditions but means progress tracking
+                    # is not shared between concurrent groups
+                    local_last_msg_ids = copy.deepcopy(last_msg_ids_copy)
+                    await extractor.extract_from_group_id(
+                        gid, local_last_msg_ids, entity
+                    )
+
+                    # Update the shared last_msg_ids with the results from this group
+                    # This needs to be done in a thread-safe manner
+                    for key, value in local_last_msg_ids.items():
+                        if (
+                            key not in last_msg_ids_copy
+                            or value > last_msg_ids_copy[key]
+                        ):
+                            last_msg_ids_copy[key] = value
+
+                    logging.info(
+                        f'✅ Completed group {i}/{total_groups}: "{group_name}"'
+                    )
+                    return True
+
+                except Exception as e:
+                    logging.error(
+                        f'❌ Failed to process group {i}/{total_groups} "{group_name}": {e}'
+                    )
+                    return False
+
+        # Create tasks for all groups
+        tasks = [
+            process_group_with_semaphore(gid, i, len(group_ids))
+            for i, gid in enumerate(group_ids, 1)
+        ]
+
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Update the original last_msg_ids with the results
+        last_msg_ids.update(last_msg_ids_copy)
+
+        # Check results for any exceptions
+        for i, result in enumerate(results, 1):
+            if isinstance(result, Exception):
+                logging.error(f"Unexpected error in group {i}: {result}")
+
+        # Ensure all data is saved and resources are cleaned up
+        try:
+            storage.save_last_msg_ids(last_msg_ids)
+            logging.info("\n💾 Progress tracking data saved.")
+        except Exception as e:
+            logging.error(f"\n❌ Failed to save progress tracking data: {e}")
+
         logging.info("\n🎉 Extraction complete.")
 
 

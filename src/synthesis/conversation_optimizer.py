@@ -6,11 +6,12 @@ to reduce API calls while maintaining synthesis quality.
 """
 
 import hashlib
-import logging
 import re
 from typing import Any, Dict, List
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class ConversationOptimizer:

@@ -1,8 +1,8 @@
-import logging
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+import structlog
 from litellm import APIError
 from pyrate_limiter import Limiter
 
@@ -10,7 +10,7 @@ from src.core.config import AppSettings
 from src.rag import litellm_client
 from src.synthesis.decorators import retry_with_backoff
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NuggetEmbedder:

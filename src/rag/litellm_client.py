@@ -6,17 +6,17 @@ the rest of the code avoid repeating retry logic and ensures consistent
 flags (cache=True) and logging.
 """
 
-import logging
 import os
 import time
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
 import litellm
+import structlog
 
 from src.core.config import get_settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # --- Lazy Client Initialization ---
 # The router is initialized lazily on the first call to complete() or embed()

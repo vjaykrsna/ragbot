@@ -6,14 +6,16 @@ conversations based on time, topic, and reply-to links.
 """
 
 import hashlib
-import logging
 from collections import OrderedDict, deque
 from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List
 
+import structlog
 from dateutil.parser import isoparse
 
 from src.core.config import ConversationSettings
+
+logger = structlog.get_logger(__name__)
 
 
 class LRUMessageMap(OrderedDict):
@@ -96,7 +98,7 @@ class ConversationBuilder:
         self.max_active_conversations = max_active
         self.msg_map = LRUMessageMap(max_msg_map)
         self.active: deque[ActiveConversation] = deque()
-        self.logger = logging.getLogger(__name__)
+        self.logger = structlog.get_logger(__name__)
 
     def process_stream(
         self, message_stream: Generator[Dict[str, Any], None, None]

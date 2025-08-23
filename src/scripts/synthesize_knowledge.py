@@ -1,11 +1,11 @@
 import concurrent.futures
 import hashlib
-import logging
 import threading
 from collections import defaultdict
 from typing import Any, Dict, List
 
 import chromadb
+import structlog
 from chromadb.api.models.Collection import Collection
 from pyrate_limiter import Duration, Limiter, Rate
 
@@ -20,11 +20,7 @@ from src.synthesis.nugget_generator import NuggetGenerator
 from src.synthesis.nugget_store import NuggetStore
 from src.synthesis.progress_tracker import ProgressTracker
 
-logger = logging.getLogger(__name__)
-
-# Thread-safe locks
-chroma_lock = threading.Lock()
-fail_file_lock = threading.Lock()
+logger = structlog.get_logger(__name__)
 
 
 class KnowledgeSynthesizer:
@@ -104,11 +100,23 @@ class KnowledgeSynthesizer:
 
         logger.info(f"Resuming from conversation index {start_index}")
 
-        # Apply conversation optimization before batching
+        # Apply conversation optimization before batching, but process in chunks to manage memory
         logger.info("Applying conversation optimization...")
-        optimized_conversations = self.nugget_generator.optimizer.optimize_batch(
-            conversations[start_index:]
-        )
+        optimized_conversations = []
+
+        # Process conversations in chunks to avoid memory issues
+        chunk_size = max(
+            100, self.settings.synthesis.batch_size * 2
+        )  # Process in larger chunks
+        for i in range(start_index, len(conversations), chunk_size):
+            chunk_end = min(i + chunk_size, len(conversations))
+            chunk = conversations[i:chunk_end]
+            optimized_chunk = self.nugget_generator.optimizer.optimize_batch(chunk)
+            optimized_conversations.extend(optimized_chunk)
+            logger.info(
+                f"Optimized conversations {i}-{chunk_end - 1} of {len(conversations)}"
+            )
+
         logger.info(
             f"Optimization complete: {len(optimized_conversations)} high-quality conversations ready for processing"
         )
@@ -124,6 +132,11 @@ class KnowledgeSynthesizer:
 
         completed_batches = 0
         total_batches = len(batches)
+
+        # Thread-safe locks for shared resources
+        progress_lock = threading.Lock()
+        hashes_lock = threading.Lock()
+        stats_lock = threading.Lock()
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.settings.synthesis.max_workers
@@ -154,25 +167,32 @@ class KnowledgeSynthesizer:
                     if num_stored > 0:
                         bh = batch_index_to_hash.get(batch_index)
                         if bh:
-                            processed_hashes.add(bh)
-                        total_nuggets_stored += num_stored
+                            with hashes_lock:
+                                processed_hashes.add(bh)
+                        with stats_lock:
+                            total_nuggets_stored += num_stored
                         last_item_in_batch = len(batches[batch_index]) - 1
                         # Since we're working with optimized conversations, adjust the index calculation
                         new_last_processed_index = (
                             start_index + batch_index * batch_size + last_item_in_batch
                         )
-                        self.progress_tracker.save_progress(new_last_processed_index)
+                        with progress_lock:
+                            self.progress_tracker.save_progress(
+                                new_last_processed_index
+                            )
                 except Exception as e:
                     logger.error(
                         f"An error occurred while processing batch index {batch_index}: {e}",
                         exc_info=True,
                     )
-                completed_batches += 1
+                with stats_lock:
+                    completed_batches += 1
                 logger.info(
                     f"Progress: {completed_batches}/{total_batches} batches completed (Total nuggets stored: {total_nuggets_stored})"
                 )
 
-        self.progress_tracker.save_processed_hashes(processed_hashes)
+        with hashes_lock:
+            self.progress_tracker.save_processed_hashes(processed_hashes)
 
         logger.info(
             f"\n--- Knowledge Synthesis Complete ---\n"
@@ -247,7 +267,7 @@ def main() -> None:
     db = app_context.db
     db_client = app_context.db_client
 
-    data_loader = DataLoader(settings)
+    data_loader = DataLoader(settings, db)
     limiter = Limiter(Rate(settings.synthesis.requests_per_minute, Duration.MINUTE))
 
     # Initialize optimization components

@@ -1,16 +1,15 @@
 import json
-import logging
 import threading
 import uuid
 from typing import Any, Dict, List
 
 import chromadb
-import chromadb.errors
+import structlog
 from chromadb.api.models.Collection import Collection
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
-# Thread-safe lock
+# Thread-safe lock for ChromaDB operations
 chroma_lock = threading.Lock()
 
 

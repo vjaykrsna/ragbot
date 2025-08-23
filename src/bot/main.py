@@ -1,8 +1,8 @@
 import asyncio
-import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
+import structlog
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -15,7 +15,7 @@ from telegram.ext import (
 from src.core.app import initialize_app
 from src.rag.rag_pipeline import RAGPipeline
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

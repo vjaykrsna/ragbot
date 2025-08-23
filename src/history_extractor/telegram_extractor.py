@@ -1,17 +1,25 @@
 import asyncio
-import logging
 import time
 from datetime import datetime
 from typing import Any, Dict
 
+import structlog
 from pyrogram import Client
 from pyrogram.errors import FloodWait
 from pyrogram.raw.functions.channels import GetForumTopics
 from pyrogram.raw.types import InputChannel
 
+from src.core.metrics import Metrics
+from src.history_extractor.memory_utils import (
+    calculate_dynamic_batch_size,
+    estimate_message_size,
+    get_memory_usage_mb,
+)
 from src.history_extractor.message_processor import get_message_details
 from src.history_extractor.storage import Storage
 from src.history_extractor.utils import normalize_title
+
+logger = structlog.get_logger(__name__)
 
 
 class TelegramExtractor:
@@ -28,6 +36,7 @@ class TelegramExtractor:
         self.storage = storage
         # Get settings from storage's app_context
         self.settings = storage.app_context.settings.telegram.extraction
+        self.metrics = Metrics()
 
     async def extract_from_topic(
         self, entity: Any, topic: Any, last_msg_ids: Dict[str, int]
@@ -52,21 +61,19 @@ class TelegramExtractor:
 
         # Start timing the extraction process
         start_time = time.time()
-
-        # Collect messages with periodic updates
-        message_list = []
-
-        logging.info(
-            f"  - 📥 Extracting from topic: '{topic_title}' (ID: {topic_id}) [Since message ID > {last_id}]"
-        )
-
-        # Use offset_id instead of min_id and get_chat_history instead of iter_messages
-        # Pyrogram's get_chat_history returns messages in reverse chronological order by default
-        # For topics, we need to filter messages by message_thread_id
         start_time_dt = datetime.now()
+
+        # Process messages with streaming approach to avoid memory issues
+        batch_size = self.settings.extraction.batch_size  # Use configurable batch size
+        message_batch = []
+        total_saved = 0
         processed_count = 0
         saved_count = 0
         last_update_time_dt = start_time_dt
+
+        logger.info(
+            f"  - 📥 Extracting from topic: '{topic_title}' (ID: {topic_id}) [Since message ID > {last_id}]"
+        )
 
         async for msg in self.client.get_chat_history(
             entity.id if hasattr(entity, "id") else entity, offset_id=last_id
@@ -87,54 +94,42 @@ class TelegramExtractor:
             # Skip messages without text or media
             if not getattr(msg, "text", None) and not getattr(msg, "media", None):
                 processed_count += 1
+                # Update progress display every N messages or every M seconds (based on config)
+                current_time = datetime.now()
+                elapsed_since_last_update = (
+                    current_time - last_update_time_dt
+                ).total_seconds()
+                if (
+                    processed_count % self.settings.extraction.progress_update_messages
+                    == 0
+                    or elapsed_since_last_update
+                    > self.settings.extraction.ui_update_interval
+                ):
+                    elapsed_total = (current_time - start_time_dt).total_seconds()
+                    speed = processed_count / elapsed_total if elapsed_total > 0 else 0
+                    memory_usage = get_memory_usage_mb()
+                    # Use \r to overwrite the same line
+                    print(
+                        f"\r    💬 {topic_title:<20} | "
+                        f"Messages: {processed_count:>6} | "
+                        f"Saved: {saved_count:>6} | "
+                        f"Speed: {speed:>5.1f} msg/sec | "
+                        f"Memory: {memory_usage:>6.1f}MB",
+                        end="",
+                        flush=True,
+                    )
+                    last_update_time_dt = current_time
                 continue
 
-            message_list.append(msg)
-            max_id = max(max_id, msg.id)
-            processed_count += 1
-
-            # Update progress display every 100 messages or every 2 seconds
-            current_time = datetime.now()
-            elapsed_since_last_update = (
-                current_time - last_update_time_dt
-            ).total_seconds()
-            if processed_count % 100 == 0 or elapsed_since_last_update > 2:
-                elapsed_total = (current_time - start_time_dt).total_seconds()
-                speed = processed_count / elapsed_total if elapsed_total > 0 else 0
-                # Use \r to overwrite the same line
-                print(
-                    f"\r    💬 {topic_title}: {processed_count} messages processed, "
-                    f"{saved_count} saved, {speed:.1f} msg/sec",
-                    end="",
-                    flush=True,
-                )
-                last_update_time_dt = current_time
-
-        if not processed_count:
-            logging.info(f"    📝 No new messages in '{topic_title}'")
-            return 0
-
-        # Final status update
-        elapsed_total = (datetime.now() - start_time_dt).total_seconds()
-        speed = processed_count / elapsed_total if elapsed_total > 0 else 0
-        print(
-            f"\r    ✅ {topic_title}: {processed_count} messages processed, "
-            f"{saved_count} saved, {speed:.1f} msg/sec"
-        )
-
-        # Process messages with optimized batch processing
-        batch_size = 250  # Keep at a reasonable value for memory efficiency
-        message_batch = []
-        total_saved = 0
-
-        for msg in message_list:
             try:
                 message_type, content, extra_data = get_message_details(msg)
             except Exception as e:
-                logging.debug(f"Failed to process message {msg.id}: {e}")
+                logger.warning(f"Failed to process message {msg.id}: {e}")
+                processed_count += 1
                 continue
 
             if not content:
+                processed_count += 1
                 continue
 
             # Get sender information
@@ -144,29 +139,64 @@ class TelegramExtractor:
             elif hasattr(msg, "sender_chat") and msg.sender_chat:
                 sender_id = msg.sender_chat.id
 
-            message_batch.append(
-                {
-                    "id": msg.id,
-                    "date": (
-                        msg.date.isoformat()
-                        if isinstance(msg.date, datetime)
-                        else datetime.fromtimestamp(msg.date).isoformat()
-                    ),
-                    "sender_id": sender_id,
-                    "message_type": message_type,
-                    "content": content,
-                    "extra_data": extra_data,
-                    "reply_to_msg_id": getattr(msg, "reply_to_message_id", None),
-                    "topic_id": topic_id,
-                    "topic_title": topic_title,
-                    "source_name": (
-                        entity.title if hasattr(entity, "title") else str(entity)
-                    ),
-                    "source_group_id": entity.id if hasattr(entity, "id") else group_id,
-                    "ingestion_timestamp": datetime.now().isoformat(),
-                }
-            )
-            total_saved += 1
+            message_dict = {
+                "id": msg.id,
+                "date": (
+                    msg.date.isoformat()
+                    if isinstance(msg.date, datetime)
+                    else datetime.fromtimestamp(msg.date).isoformat()
+                ),
+                "sender_id": sender_id,
+                "message_type": message_type,
+                "content": content,
+                "extra_data": extra_data,
+                "reply_to_msg_id": getattr(msg, "reply_to_message_id", None),
+                "topic_id": topic_id,
+                "topic_title": topic_title,
+                "source_name": (
+                    entity.title if hasattr(entity, "title") else str(entity)
+                ),
+                "source_group_id": entity.id if hasattr(entity, "id") else group_id,
+                "ingestion_timestamp": datetime.now().isoformat(),
+            }
+
+            # Estimate message size for dynamic batch sizing
+            if processed_count == 1:  # Estimate size from first message
+                message_size_estimate = estimate_message_size(message_dict)
+                # Adjust batch size based on available memory
+                batch_size = calculate_dynamic_batch_size(
+                    self.settings.extraction.batch_size, message_size_estimate
+                )
+
+            message_batch.append(message_dict)
+            max_id = max(max_id, msg.id)
+            processed_count += 1
+            saved_count += 1
+
+            # Update progress display every N messages or every M seconds (based on config)
+            current_time = datetime.now()
+            elapsed_since_last_update = (
+                current_time - last_update_time_dt
+            ).total_seconds()
+            if (
+                processed_count % self.settings.extraction.progress_update_messages == 0
+                or elapsed_since_last_update
+                > self.settings.extraction.ui_update_interval
+            ):
+                elapsed_total = (current_time - start_time_dt).total_seconds()
+                speed = processed_count / elapsed_total if elapsed_total > 0 else 0
+                memory_usage = get_memory_usage_mb()
+                # Use \r to overwrite the same line
+                print(
+                    f"\r    💬 {topic_title:<20} | "
+                    f"Messages: {processed_count:>6} | "
+                    f"Saved: {saved_count:>6} | "
+                    f"Speed: {speed:>5.1f} msg/sec | "
+                    f"Memory: {memory_usage:>6.1f}MB",
+                    end="",
+                    flush=True,
+                )
+                last_update_time_dt = current_time
 
             # When batch is full, save to database
             if len(message_batch) >= batch_size:
@@ -175,35 +205,74 @@ class TelegramExtractor:
                     self.storage.save_messages_to_db(
                         full_title, topic_id, message_batch
                     )
+                    total_saved += len(message_batch)
+                    self.metrics.record_messages(len(message_batch))
                     message_batch = []  # Clear the batch
+
+                    # Log metrics periodically
+                    if (
+                        total_saved
+                        % (self.settings.extraction.progress_update_messages * 5)
+                        == 0
+                    ):
+                        self.metrics.log_summary()
+
+                    # Re-estimate batch size after each batch to adapt to changing conditions
+                    if processed_count > 1:
+                        batch_size = calculate_dynamic_batch_size(
+                            self.settings.extraction.batch_size, message_size_estimate
+                        )
 
         # Save any remaining messages in the batch
         if message_batch:
             full_title = f"{entity.title}_{topic_title}"
             self.storage.save_messages_to_db(full_title, topic_id, message_batch)
+            total_saved += len(message_batch)
+            self.metrics.record_messages(len(message_batch))
 
         # Update last message ID
-        if total_saved > 0:
+        if total_saved > 0 and max_id > 0:
             last_msg_ids[last_id_key] = max_id
 
+        # Log final metrics
+        if total_saved > 0:
+            self.metrics.log_summary()
+
         # Display final extraction information on a new line
-        if len(message_list) > 0:
+        if processed_count > 0:
+            elapsed_total = (datetime.now() - start_time_dt).total_seconds()
+            speed = processed_count / elapsed_total if elapsed_total > 0 else 0
+            memory_usage = get_memory_usage_mb()
+            print(
+                f"\r    ✅ {topic_title:<20} | "
+                f"Messages: {processed_count:>6} | "
+                f"Saved: {total_saved:>6} | "
+                f"Speed: {speed:>5.1f} msg/sec | "
+                f"Memory: {memory_usage:>6.1f}MB"
+            )
+
             extraction_time = time.time() - start_time
             extraction_speed = (
-                len(message_list) / extraction_time if extraction_time > 0 else 0
+                processed_count / extraction_time if extraction_time > 0 else 0
             )
             print(
-                f"\n-> {entity.title}/{topic_title} - {total_saved} messages extracted ({extraction_speed:.1f} msg/sec)"
+                f"\n📊 Summary for {entity.title}/{topic_title} | "
+                f"Total: {total_saved} messages | "
+                f"Speed: {extraction_speed:.1f} msg/sec | "
+                f"Duration: {extraction_time:.1f}s"
             )
         else:
+            logger.info(f"    📝 No new messages in '{topic_title}'")
             print(
-                f"\n-> {entity.title}/{topic_title} - {total_saved} messages extracted"
+                f"\n📊 Summary for {entity.title}/{topic_title} | "
+                f"Total: {total_saved} messages | "
+                f"Status: No new messages"
             )
 
         return total_saved
 
     async def extract_from_group_id(
-        self, group_id: int, last_msg_ids: Dict[str, int]
+        self, group_id: int, last_msg_ids: Dict[str, int], entity=None
     ) -> int:
         """
         Extracts messages from a specific group ID.
@@ -211,14 +280,17 @@ class TelegramExtractor:
         Args:
             group_id: The ID of the group to extract messages from.
             last_msg_ids: A dictionary mapping topic keys to the last processed message ID.
+            entity: Optional pre-fetched group entity to avoid redundant API calls.
 
         Returns:
             The total number of messages extracted from the group.
         """
         total_messages = 0
         try:
-            entity = await self.client.get_chat(group_id)
-            logging.info(f"\nProcessing Group: {entity.title} (ID: {group_id})")
+            # Use pre-fetched entity if provided, otherwise fetch it
+            if entity is None:
+                entity = await self.client.get_chat(group_id)
+            logger.info(f"\nProcessing Group: {entity.title} (ID: {group_id})")
 
             # Try to get forum topics regardless of is_forum flag
             # This handles cases where is_forum is incorrectly reported as False
@@ -244,24 +316,24 @@ class TelegramExtractor:
                     topics = topics_result.topics
             except Exception as e:
                 # If we can't get topics, it might be a regular group or there was an error
-                logging.debug(
+                logger.debug(
                     f"  - Could not fetch topics (might be regular group): {e}"
                 )
 
             if topics:
-                logging.info(f"📋 Found {len(topics)} topics:")
+                logger.info(f"📋 Found {len(topics)} topics:")
 
                 # Display topic list upfront
                 for i, topic in enumerate(topics, 1):
                     topic_title = normalize_title(getattr(topic, "title", "General"))
-                    logging.info(f"  {i:2d}. {topic_title}")
+                    logger.info(f"  {i:2d}. {topic_title}")
 
-                logging.info(f"🔄 Starting extraction of {len(topics)} topics...")
+                logger.info(f"🔄 Starting extraction of {len(topics)} topics...")
 
                 # Process topics with progress tracking
                 for i, topic in enumerate(topics, 1):
                     topic_title = normalize_title(getattr(topic, "title", "General"))
-                    logging.info(
+                    logger.info(
                         f"📊 Processing topic {i}/{len(topics)}: '{topic_title}'"
                     )
                     count = await self.extract_from_topic(entity, topic, last_msg_ids)
@@ -270,9 +342,9 @@ class TelegramExtractor:
                 # Check if it's marked as a forum but has no topics, or if it's a regular group
                 is_forum = getattr(entity, "is_forum", False)
                 if is_forum:
-                    logging.info("  - Forum group with no topics found. Skipping.")
+                    logger.info("  - Forum group with no topics found. Skipping.")
                 else:
-                    logging.info(
+                    logger.info(
                         "  - This is a regular group. Extracting from main chat."
                     )
                     general_topic = type(
@@ -283,20 +355,22 @@ class TelegramExtractor:
                     )
                     total_messages += count
         except FloodWait as fwe:
-            logging.warning(
+            logger.warning(
                 f"Flood wait error for group {group_id}. Waiting for {fwe.value} seconds."
             )
+            self.metrics.record_error("FloodWait")
             # Show a message every 30 seconds while waiting
             wait_time = fwe.value
             while wait_time > 0:
                 if wait_time % 30 == 0 or wait_time < 30:
-                    logging.info(f"Waiting for {wait_time} more seconds...")
+                    logger.info(f"Waiting for {wait_time} more seconds...")
                 await asyncio.sleep(min(30, wait_time))
                 wait_time -= 30
             total_messages = await self.extract_from_group_id(
-                group_id, last_msg_ids
+                group_id, last_msg_ids, entity
             )  # Retry
         except Exception as e:
-            logging.exception(f"❌ Error processing group {group_id}: {e}")
+            logger.exception(f"❌ Error processing group {group_id}: {e}")
+            self.metrics.record_error("GeneralException")
 
         return total_messages

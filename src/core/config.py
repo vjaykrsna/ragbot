@@ -15,12 +15,14 @@ from dotenv import load_dotenv
 class TelegramExtractionSettings:
     """Settings for Telegram message extraction process."""
 
-    concurrent_groups: int = 2  # Conservative setting for API rate limits
+    concurrent_groups: int = 1  # Process one group at a time to avoid rate limits
     messages_per_request: int = (
         100  # Optimized for Telegram API limits (max 100 per call)
     )
-    buffer_size: int = 2000  # Balanced memory utilization
+    buffer_size: int = 1000  # Reduced from 2000 to save memory
     ui_update_interval: int = 2  # Good balance of responsiveness and performance
+    batch_size: int = 250  # Default batch size for message processing
+    progress_update_messages: int = 100  # Update progress every N messages
 
 
 @dataclass
@@ -249,10 +251,16 @@ def get_settings() -> AppSettings:
         session_name=os.getenv("SESSION_NAME", "telegram_session"),
         group_ids=[int(gid.strip()) for gid in group_ids_str.split(",") if gid.strip()],
         extraction=TelegramExtractionSettings(
-            concurrent_groups=int(os.getenv("TELEGRAM_CONCURRENT_GROUPS", "2")),
+            concurrent_groups=max(
+                1, min(5, int(os.getenv("TELEGRAM_CONCURRENT_GROUPS", "1")))
+            ),  # Validate range 1-5
             messages_per_request=int(os.getenv("TELEGRAM_MESSAGES_PER_REQUEST", "200")),
             buffer_size=int(os.getenv("TELEGRAM_BUFFER_SIZE", "1000")),
             ui_update_interval=int(os.getenv("TELEGRAM_UI_UPDATE_INTERVAL", "3")),
+            batch_size=int(os.getenv("TELEGRAM_BATCH_SIZE", "250")),
+            progress_update_messages=int(
+                os.getenv("TELEGRAM_PROGRESS_UPDATE_MESSAGES", "100")
+            ),
         ),
     )
 
@@ -477,5 +485,26 @@ def _validate_configuration(
         logger = logging.getLogger(__name__)
         logger.warning(
             f"TELEGRAM_UI_UPDATE_INTERVAL ({telegram.extraction.ui_update_interval}) should be between 1 and 5 seconds. "
+            f"Values outside this range may cause UI issues or unnecessary I/O overhead."
+        )
+
+    if telegram.extraction.batch_size < 50 or telegram.extraction.batch_size > 1000:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"TELEGRAM_BATCH_SIZE ({telegram.extraction.batch_size}) should be between 50 and 1000. "
+            f"Values outside this range may cause performance issues or memory problems."
+        )
+
+    if (
+        telegram.extraction.progress_update_messages < 10
+        or telegram.extraction.progress_update_messages > 1000
+    ):
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"TELEGRAM_PROGRESS_UPDATE_MESSAGES ({telegram.extraction.progress_update_messages}) should be between 10 and 1000. "
             f"Values outside this range may cause UI issues or unnecessary I/O overhead."
         )

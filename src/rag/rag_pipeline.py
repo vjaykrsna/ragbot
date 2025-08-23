@@ -1,14 +1,14 @@
-import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import chromadb
+import structlog
 from chromadb.api.models.Collection import Collection
 
 from src.core.config import AppSettings
 from src.rag import litellm_client
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LiteLLMEmbeddingFunction:

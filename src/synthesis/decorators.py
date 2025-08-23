@@ -1,8 +1,8 @@
-import logging
 import time
 from functools import wraps
 from typing import Callable
 
+import structlog
 from litellm import (
     APIConnectionError,
     APIError,
@@ -11,7 +11,7 @@ from litellm import (
     Timeout,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def retry_with_backoff(

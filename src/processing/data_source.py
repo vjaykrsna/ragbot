@@ -4,10 +4,13 @@ Data source component for the processing pipeline.
 This module provides a class for discovering and iterating through raw data files.
 """
 
-import logging
 from typing import Any, Dict, Generator
 
+import structlog
+
 from src.core.database import Database
+
+logger = structlog.get_logger(__name__)
 
 
 class DataSource:
@@ -23,7 +26,7 @@ class DataSource:
             db: The database to read from.
         """
         self.db = db
-        self.logger = logging.getLogger(__name__)
+        self.logger = structlog.get_logger(__name__)
 
     def __iter__(self) -> Generator[Dict[str, Any], None, None]:
         """Iterates through all messages in the database."""

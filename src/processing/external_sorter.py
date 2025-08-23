@@ -8,14 +8,16 @@ into memory. It uses a chunking and k-way merge strategy.
 import gzip
 import heapq
 import json
-import logging
 import os
 import tempfile
 from typing import Any, Dict, Generator, List, Tuple
 
+import structlog
 from dateutil.parser import isoparse
 
 from src.processing.data_source import DataSource
+
+logger = structlog.get_logger(__name__)
 
 
 class ExternalSorter:
@@ -29,7 +31,7 @@ class ExternalSorter:
         """
         self.chunk_size = chunk_size
         self.use_gzip = use_gzip
-        self.logger = logging.getLogger(__name__)
+        self.logger = structlog.get_logger(__name__)
 
     def sort(self, data_source: DataSource) -> Generator[Dict[str, Any], None, None]:
         """Sorts the data and yields messages in chronological order."""

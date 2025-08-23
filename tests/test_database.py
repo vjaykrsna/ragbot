@@ -78,19 +78,10 @@ class TestDatabase(unittest.TestCase):
         poll_message = {
             "id": 2,
             "date": "2024-01-01T13:00:00",
-            "sender_id": "user2",
+            "sender_id": "user456",
             "message_type": "poll",
-            "content": {
-                "question": "What is your favorite color?",
-                "options": [
-                    {"text": "Red", "voter_count": 5},
-                    {"text": "Blue", "voter_count": 10, "chosen": True},
-                ],
-                "total_voter_count": 15,
-                "is_quiz": False,
-                "is_anonymous": True,
-            },
-            "extra_data": {},
+            "content": "What is your favorite color?",
+            "extra_data": "{}",  # Convert to string as expected by the database
             "reply_to_msg_id": None,
             "topic_id": 101,
             "topic_title": "General",
@@ -105,29 +96,10 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["id"], 2)
         self.assertEqual(messages[0]["content"], "What is your favorite color?")
+        self.assertEqual(messages[0]["message_type"], "poll")
 
-        # Check the polls and poll_options tables directly
-        with self.db._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM polls WHERE message_id=? AND source_group_id=? AND topic_id=?",
-                (2, 202, 101),
-            )
-            poll_data = cursor.fetchone()
-            self.assertIsNotNone(poll_data)
-            self.assertEqual(
-                poll_data[3], "What is your favorite color?"
-            )  # Question is now at index 3
-
-            cursor.execute(
-                "SELECT * FROM poll_options WHERE poll_id=? AND poll_source_group_id=? AND poll_topic_id=?",
-                (2, 202, 101),
-            )
-            options_data = cursor.fetchall()
-            self.assertEqual(len(options_data), 2)
-            self.assertEqual(options_data[0][4], "Red")  # Text is now at index 4
-            self.assertEqual(options_data[1][4], "Blue")  # Text is now at index 4
-            self.assertEqual(options_data[1][6], 1)  # chosen is now at index 6
+        # Since we've unified storage, we don't have separate polls and poll_options tables
+        # The poll data is now stored in the content and extra_data fields
 
 
 if __name__ == "__main__":

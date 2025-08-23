@@ -6,16 +6,19 @@ of the data processing pipeline, from data source to conversation building.
 """
 
 import json
-import logging
 import os
 import re
 from typing import Any, Dict, List
+
+import structlog
 
 from src.core.config import AppSettings
 from src.processing.anonymizer import Anonymizer
 from src.processing.conversation_builder import ConversationBuilder
 from src.processing.data_source import DataSource
 from src.processing.external_sorter import ExternalSorter
+
+logger = structlog.get_logger(__name__)
 
 
 class DataProcessingPipeline:
@@ -39,7 +42,7 @@ class DataProcessingPipeline:
         self.sorter = sorter
         self.anonymizer = anonymizer
         self.conv_builder = conv_builder
-        self.logger = logging.getLogger(__name__)
+        self.logger = structlog.get_logger(__name__)
         self.number_re = re.compile(
             r"(?P<number>\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\b)\s*(?P<unit>%|percent\b|rs\b|inr\b|₹|km\b|m\b|kg\b|k\b|lakh\b|crore\b|million\b|billion\b)?",
             re.IGNORECASE,
@@ -60,10 +63,7 @@ class DataProcessingPipeline:
         conversation_stream = self.conv_builder.process_stream(processed_stream)
 
         # Persistence
-        output_file = os.path.join(
-            self.settings.paths.processed_data_dir,
-            self.settings.paths.processed_conversations_file,
-        )
+        output_file = self.settings.paths.processed_conversations_file
         os.makedirs(self.settings.paths.processed_data_dir, exist_ok=True)
 
         total_convs = self._write_conversations(conversation_stream, output_file)

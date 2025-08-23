@@ -1,18 +1,19 @@
 import json
-import logging
 import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+import structlog
 from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
+from src.core.metrics import Metrics
 from src.rag import litellm_client
 from src.synthesis.conversation_optimizer import ConversationOptimizer
 from src.synthesis.decorators import retry_with_backoff
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NuggetGenerator:
@@ -33,6 +34,7 @@ class NuggetGenerator:
         self.settings = settings
         self.limiter = limiter
         self.optimizer = optimizer or ConversationOptimizer()
+        self.metrics = Metrics()
 
     @retry_with_backoff
     def generate_nuggets_batch(
@@ -86,9 +88,23 @@ class NuggetGenerator:
             response_content = ""
             json_match = None
             for attempt in range(attempts):
-                response = litellm_client.complete(
-                    [{"role": "user", "content": prompt_payload}], max_retries=1
-                )
+                try:
+                    response = litellm_client.complete(
+                        [{"role": "user", "content": prompt_payload}], max_retries=1
+                    )
+                    self.metrics.record_api_call("litellm_complete", success=True)
+                except Exception as e:
+                    self.metrics.record_api_call("litellm_complete", success=False)
+                    self.metrics.record_error(f"litellm_error: {type(e).__name__}")
+                    logger.warning(
+                        "LLM returned error, retrying (%d/%d): %s",
+                        attempt + 1,
+                        attempts,
+                        str(e),
+                    )
+                    time.sleep(2**attempt)
+                    continue
+
                 if not response:
                     logger.warning(
                         "LLM returned empty response, retrying (%d/%d)",
@@ -158,6 +174,14 @@ class NuggetGenerator:
                         self._save_failed_batch(
                             conv_batch, "Invalid nugget structure", str(nugget)
                         )
+
+                # Record metrics
+                self.metrics.record_nuggets(len(validated_nuggets))
+                self.metrics.record_conversations(len(conv_batch))
+
+                # Log metrics periodically
+                if len(validated_nuggets) > 0:
+                    self.metrics.log_summary()
 
                 return validated_nuggets
             except json.JSONDecodeError:

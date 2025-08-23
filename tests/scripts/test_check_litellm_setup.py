@@ -112,11 +112,10 @@ def test_main_no_redis(mock_check_redis, mock_parse_yaml, mock_initialize_app):
     }
     mock_parse_yaml.return_value = yaml_config
 
-    with patch("logging.Logger.info") as mock_log_info:
+    with patch("src.scripts.check_litellm_setup.logger") as mock_logger:
         main()
         mock_parse_yaml.assert_called_once()
         mock_check_redis.assert_not_called()
-        assert any(
-            "No redis cache configured" in call[0][0]
-            for call in mock_log_info.call_args_list
-        )
+        # Check that the expected message was logged
+        logged_messages = [call[0][0] for call in mock_logger.info.call_args_list]
+        assert any("No redis cache configured" in msg for msg in logged_messages)

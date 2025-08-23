@@ -5,16 +5,16 @@ configuration for litellm proxy + redis cache is sane. It does NOT make
 LLM calls. Run locally before starting heavy synthesis jobs.
 """
 
-import logging
 import os
 import socket
 
+import structlog
 import yaml
 
 from src.core.app import initialize_app
 
 # Initialize the application context
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def parse_litellm_yaml(path: str):

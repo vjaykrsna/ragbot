@@ -1,15 +1,16 @@
 import json
-import logging
 import os
 import threading
 from datetime import datetime
 from typing import Any, Dict, List
 
+import structlog
+
 from src.core.config import AppSettings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
-# Thread-safe lock
+# Thread-safe lock for file operations
 fail_file_lock = threading.Lock()
 
 

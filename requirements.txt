@@ -21,7 +21,9 @@ anyio==4.10.0
     #   starlette
     #   watchfiles
 apscheduler==3.11.0
-    # via litellm
+    # via
+    #   -r requirements.in
+    #   litellm
 attrs==25.3.0
     # via
     #   aiohttp
@@ -135,7 +137,6 @@ httpx==0.28.1
     #   litellm
     #   mcp
     #   openai
-    #   python-telegram-bot
 httpx-sse==0.4.1
     # via mcp
 huggingface-hub==0.34.4
@@ -274,6 +275,7 @@ pycparser==2.22
     # via cffi
 pydantic[email]==2.11.7
     # via
+    #   -r requirements.in
     #   chromadb
     #   fastapi
     #   fastapi-sso
@@ -284,7 +286,9 @@ pydantic[email]==2.11.7
 pydantic-core==2.33.2
     # via pydantic
 pydantic-settings==2.10.1
-    # via mcp
+    # via
+    #   -r requirements.in
+    #   mcp
 pygments==2.19.2
     # via rich
 pyjwt[crypto]==2.10.1
@@ -319,8 +323,6 @@ python-multipart==0.0.18
     # via
     #   litellm
     #   mcp
-python-telegram-bot==22.3
-    # via -r requirements.in
 pytz==2025.2
     # via croniter
 pyyaml==6.0.2
@@ -399,6 +401,7 @@ tokenizers==0.21.4
     #   litellm
 tqdm==4.67.1
     # via
+    #   -r requirements.in
     #   chromadb
     #   huggingface-hub
     #   openai

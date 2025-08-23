@@ -6,9 +6,10 @@ anonymized identifiers.
 """
 
 import json
-import logging
 import os
 from typing import Dict, Tuple
+
+import structlog
 
 from src.core.config import PathSettings
 
@@ -26,7 +27,7 @@ class Anonymizer:
             settings: The path settings for the application.
         """
         self.user_map_file = settings.user_map_file
-        self.logger = logging.getLogger(__name__)
+        self.logger = structlog.get_logger(__name__)
         self.user_map, self.next_user_num = self._load_user_map()
 
     def _load_user_map(self) -> Tuple[Dict[str, str], int]:
