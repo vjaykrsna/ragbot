@@ -50,7 +50,7 @@ async def main():
         # Get the current user
         me = await client.get_me()
         logging.info(
-            f'👤 Logged in as: {me.first_name} (@{getattr(me, "username", "N/A")})'
+            f"👤 Logged in as: {me.first_name} (@{getattr(me, 'username', 'N/A')})"
         )
 
         if not settings.telegram.group_ids:
