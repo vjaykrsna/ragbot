@@ -3,6 +3,7 @@
 
 # Python files
 *.pyc
+__pycache__/
 
 # IDEs and editors
 .crush/
@@ -27,8 +28,23 @@
 .pytest_cache/
 .ruff_cache/
 
+# Type checking cache
+.mypy_cache/
+
 # Coverage data
 .coverage
+coverage.xml
+htmlcov/
+
+# Build and distribution directories
+dist/
+build/
+
+# Egg info directories
+*.egg-info/
+
+# Virtual environment
+.venv/
 
 # Database files
 *.sqlite
