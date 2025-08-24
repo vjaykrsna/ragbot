@@ -89,7 +89,87 @@ class KnowledgeSynthesizer:
         if not conversations or not prompt_template:
             return
 
+        # Convert to the format expected by _synthesize_and_populate
         self._synthesize_and_populate(conversations, prompt_template, collection)
+
+        logger.info("✅ Knowledge base synthesis complete.")
+
+    def _synthesize_and_populate(
+        self,
+        conversations: List[Dict[str, Any]],
+        prompt_template: str,
+        collection: Collection,
+    ) -> None:
+        """
+        Internal method to synthesize and populate knowledge base.
+
+        Args:
+            conversations: List of conversations to process
+            prompt_template: The prompt template for nugget generation
+            collection: The ChromaDB collection to store nuggets
+        """
+        logger.info(f"Loaded {len(conversations)} conversations from database.")
+
+        if not conversations:
+            logger.info("No conversations found. Nothing to process.")
+            return
+
+        # Apply conversation optimization
+        logger.info("Applying conversation optimization...")
+        optimized_conversations = self.conversation_optimizer.optimize_conversations(
+            conversations
+        )
+        logger.info(
+            f"Optimization complete. Reduced from {len(conversations)} to {len(optimized_conversations)} conversations."
+        )
+
+        # Load checkpoint if available
+        checkpoint_data = self.checkpoint_manager.load_checkpoint()
+        start_index = checkpoint_data.get("last_processed_index", 0)
+        processed_hashes = set(checkpoint_data.get("processed_hashes", []))
+
+        # If no checkpoint, load from progress tracker
+        if start_index == 0:
+            start_index = self.progress_tracker.load_progress() + 1
+        if not processed_hashes:
+            processed_hashes = self.progress_tracker.load_processed_hashes()
+
+        # If we're resuming from a checkpoint, adjust our conversation list
+        if start_index > 0:
+            logger.info(f"Resuming from conversation index {start_index}")
+            if start_index < len(optimized_conversations):
+                optimized_conversations = optimized_conversations[start_index:]
+            else:
+                logger.info("All conversations have already been processed.")
+                return
+
+        # Process conversations in batches
+        batch_size = self.settings.synthesis.batch_size
+        batches = [
+            optimized_conversations[i : i + batch_size]
+            for i in range(0, len(optimized_conversations), batch_size)
+        ]
+
+        if not batches:
+            logger.info("No batches to process.")
+            return
+
+        logger.info(
+            f"Processing {len(batches)} batches of {batch_size} conversations each."
+        )
+
+        # Process batches with checkpointing
+        self._process_batches_with_checkpointing(
+            batches,
+            prompt_template,
+            collection,
+            start_index,
+            processed_hashes,
+            batch_size,
+        )
+
+        # Clear checkpoint on successful completion
+        self.checkpoint_manager.clear_checkpoint()
 
         logger.info("✅ Knowledge base synthesis complete.")
 

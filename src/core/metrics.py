@@ -69,10 +69,9 @@ class Metrics:
     def get_memory_usage_mb(self) -> float:
         """Get current memory usage in MB."""
         try:
-            import resource
+            from src.history_extractor.memory_utils import get_memory_usage_mb
 
-            usage = resource.getrusage(resource.RUSAGE_SELF)
-            return usage.ru_maxrss / 1024  # Convert KB to MB on Linux
+            return get_memory_usage_mb()
         except Exception:
             return 0.0
 

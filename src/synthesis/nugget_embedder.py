@@ -26,12 +26,26 @@ class NuggetEmbedder:
         self.settings = settings
         self.limiter = limiter
 
-    @retry_with_backoff
     def embed_nuggets_batch(
         self, nuggets: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
         Embeds a batch of knowledge nuggets.
+
+        Args:
+            nuggets: A list of nuggets to embed.
+
+        Returns:
+            A list of nuggets with embeddings.
+        """
+        return self._embed_nuggets_batch_with_retry(nuggets)
+
+    @retry_with_backoff
+    def _embed_nuggets_batch_with_retry(
+        self, nuggets: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Internal method to embed nuggets with retry logic.
 
         Args:
             nuggets: A list of nuggets to embed.

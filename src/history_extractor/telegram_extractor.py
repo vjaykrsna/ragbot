@@ -97,7 +97,9 @@ class TelegramExtractor:
 
         # Initialize variables at the start of the method
         message_size_estimate = 0  # Initialize with default value
-        batch_size = self.settings.extraction.batch_size  # Use configurable batch size
+        batch_size = (
+            self.settings.telegram.extraction.batch_size
+        )  # Use configurable batch size
         message_batch = []
         total_saved = 0
         processed_count = 0
@@ -134,10 +136,11 @@ class TelegramExtractor:
                     current_time - last_update_time_dt
                 ).total_seconds()
                 if (
-                    processed_count % self.settings.extraction.progress_update_messages
+                    processed_count
+                    % self.settings.telegram.extraction.progress_update_messages
                     == 0
                     or elapsed_since_last_update
-                    > self.settings.extraction.ui_update_interval
+                    > self.settings.telegram.extraction.ui_update_interval
                 ):
                     elapsed_total = (current_time - start_time_dt).total_seconds()
                     speed = processed_count / elapsed_total if elapsed_total > 0 else 0
@@ -199,7 +202,7 @@ class TelegramExtractor:
                 message_size_estimate = estimate_message_size(message_dict)
                 # Adjust batch size based on available memory
                 batch_size = calculate_dynamic_batch_size(
-                    self.settings.extraction.batch_size, message_size_estimate
+                    self.settings.telegram.extraction.batch_size, message_size_estimate
                 )
 
             message_batch.append(message_dict)
@@ -213,9 +216,11 @@ class TelegramExtractor:
                 current_time - last_update_time_dt
             ).total_seconds()
             if (
-                processed_count % self.settings.extraction.progress_update_messages == 0
+                processed_count
+                % self.settings.telegram.extraction.progress_update_messages
+                == 0
                 or elapsed_since_last_update
-                > self.settings.extraction.ui_update_interval
+                > self.settings.telegram.extraction.ui_update_interval
             ):
                 elapsed_total = (current_time - start_time_dt).total_seconds()
                 speed = processed_count / elapsed_total if elapsed_total > 0 else 0
@@ -246,7 +251,10 @@ class TelegramExtractor:
                     # Log metrics periodically
                     if (
                         total_saved
-                        % (self.settings.extraction.progress_update_messages * 5)
+                        % (
+                            self.settings.telegram.extraction.progress_update_messages
+                            * 5
+                        )
                         == 0
                     ):
                         self.metrics.log_summary()
@@ -254,7 +262,8 @@ class TelegramExtractor:
                     # Re-estimate batch size after each batch to adapt to changing conditions
                     if processed_count > 1:
                         batch_size = calculate_dynamic_batch_size(
-                            self.settings.extraction.batch_size, message_size_estimate
+                            self.settings.telegram.extraction.batch_size,
+                            message_size_estimate,
                         )
 
         # Save any remaining messages in the batch

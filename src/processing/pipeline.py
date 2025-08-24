@@ -7,8 +7,7 @@ of the data processing pipeline, from data source to conversation building.
 
 import json
 import os
-import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import structlog
 
@@ -43,10 +42,10 @@ class DataProcessingPipeline:
         self.anonymizer = anonymizer
         self.conv_builder = conv_builder
         self.logger = structlog.get_logger(__name__)
-        self.number_re = re.compile(
-            r"(?P<number>\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\b)\s*(?P<unit>%|percent\b|rs\b|inr\b|₹|km\b|m\b|kg\b|k\b|lakh\b|crore\b|million\b|billion\b)?",
-            re.IGNORECASE,
-        )
+        # Use the shared regex pattern from text_utils
+        from src.core.text_utils import NUMBER_RE
+
+        self.number_re = NUMBER_RE
 
     def run(self) -> None:
         """
@@ -87,30 +86,14 @@ class DataProcessingPipeline:
         # Lightweight numeric normalization
         content = rec.get("content", "")
         if isinstance(content, str):
-            rec["normalized_values"] = self._normalize_numbers(content)
+            # Use the shared normalize_numbers function
+            from src.core.text_utils import normalize_numbers
+
+            rec["normalized_values"] = normalize_numbers(content)
         else:
             rec["normalized_values"] = []
 
         return rec
-
-    def _normalize_numbers(self, text: str) -> List[Dict[str, Any]]:
-        """Extracts simple numeric facts from text."""
-        results = []
-        for m in self.number_re.finditer(text):
-            num_str = m.group("number").replace(",", "")
-            try:
-                val = float(num_str)
-            except ValueError:
-                val = None
-            results.append(
-                {
-                    "span": m.group(0),
-                    "value": val,
-                    "unit": (m.group("unit") or "").lower(),
-                    "confidence": "medium" if val is not None else "low",
-                }
-            )
-        return results
 
     def _write_conversations(self, conversation_stream, output_file: str) -> int:
         """Writes the stream of conversation envelopes to the final JSON file."""

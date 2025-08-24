@@ -1,10 +1,55 @@
+import json
 import os
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any, Dict, List
 
 from src.core.config import PathSettings
+
+
+def serialize_extra_data(extra_data: Dict[str, Any]) -> str:
+    """Serialize extra_data dictionary to JSON string, handling datetime objects."""
+    # Handle None case
+    if extra_data is None:
+        return "{}"
+
+    # Handle non-dict cases
+    if not isinstance(extra_data, dict):
+        # Try to convert to dict if it's a string representation of a dict
+        if isinstance(extra_data, str):
+            try:
+                # Try to parse as JSON
+                parsed = json.loads(extra_data)
+                if isinstance(parsed, dict):
+                    extra_data = parsed
+                else:
+                    # If it's not a dict after parsing, convert to string
+                    return json.dumps({"value": extra_data})
+            except json.JSONDecodeError:
+                # If it's not valid JSON, convert to string
+                return json.dumps({"value": extra_data})
+        else:
+            # If it's not a dict and not a string, convert to string
+            return json.dumps({"value": str(extra_data)})
+
+    # At this point, extra_data should be a dict
+    # Create a copy of the dictionary to avoid modifying the original
+    serializable_data = {}
+    for key, value in extra_data.items():
+        if isinstance(value, datetime):
+            serializable_data[key] = value.isoformat()
+        else:
+            # Handle non-serializable objects
+            try:
+                json.dumps(value)  # Test if value is JSON serializable
+                serializable_data[key] = value
+            except (TypeError, ValueError):
+                # If not serializable, convert to string
+                serializable_data[key] = str(value)
+
+    return json.dumps(serializable_data)
 
 
 class Database:
@@ -114,16 +159,48 @@ class Database:
         for msg in messages:
             # For all message types including polls, store in the main messages table
             # Poll data is already serialized in the content or extra_data fields
+            serialized_extra_data = serialize_extra_data(msg["extra_data"])
+
+            # Also serialize content if it's not a string (e.g., for polls)
+            content = msg["content"]
+            if not isinstance(content, str):
+                try:
+                    content = json.dumps(content)
+                except (TypeError, ValueError):
+                    # If content is not JSON serializable, convert to string
+                    content = str(content)
+
+            # Serialize date field if it's not already a string
+            date_value = msg["date"]
+            if not isinstance(date_value, str):
+                # Handle datetime objects
+                if hasattr(date_value, "isoformat"):
+                    date_value = date_value.isoformat()
+                # Handle timestamp objects
+                elif hasattr(date_value, "timestamp"):
+                    date_value = datetime.fromtimestamp(
+                        date_value.timestamp()
+                    ).isoformat()
+                # Handle MagicMock objects and other non-serializable objects
+                else:
+                    try:
+                        json.dumps(date_value)  # Test if value is JSON serializable
+                        # If it is, convert to string
+                        date_value = str(date_value)
+                    except (TypeError, ValueError):
+                        # If not serializable, convert to string
+                        date_value = str(date_value)
+
             message_data.append(
                 (
                     msg["id"],
                     msg["source_group_id"],
                     msg["topic_id"],
-                    msg["date"],
+                    date_value,  # Serialize date if needed
                     msg["sender_id"],
                     msg["message_type"],
-                    msg["content"],
-                    str(msg["extra_data"]),
+                    content,  # Serialize content if needed
+                    serialized_extra_data,  # Serialize dict to JSON string
                     msg["reply_to_msg_id"],
                     msg["topic_title"],
                     msg["source_name"],
@@ -144,6 +221,36 @@ class Database:
             )
 
     def _insert_message(self, cursor, msg: Dict[str, Any]):
+        serialized_extra_data = serialize_extra_data(msg["extra_data"])
+
+        # Also serialize content if it's not a string (e.g., for polls)
+        content = msg["content"]
+        if not isinstance(content, str):
+            try:
+                content = json.dumps(content)
+            except (TypeError, ValueError):
+                # If content is not JSON serializable, convert to string
+                content = str(content)
+
+        # Serialize date field if it's not already a string
+        date_value = msg["date"]
+        if not isinstance(date_value, str):
+            # Handle datetime objects
+            if hasattr(date_value, "isoformat"):
+                date_value = date_value.isoformat()
+            # Handle timestamp objects
+            elif hasattr(date_value, "timestamp"):
+                date_value = datetime.fromtimestamp(date_value.timestamp()).isoformat()
+            # Handle MagicMock objects and other non-serializable objects
+            else:
+                try:
+                    json.dumps(date_value)  # Test if value is JSON serializable
+                    # If it is, convert to string
+                    date_value = str(date_value)
+                except (TypeError, ValueError):
+                    # If not serializable, convert to string
+                    date_value = str(date_value)
+
         cursor.execute(
             """
             INSERT OR REPLACE INTO messages (
@@ -156,11 +263,11 @@ class Database:
                 msg["id"],
                 msg["source_group_id"],
                 msg["topic_id"],
-                msg["date"],
+                date_value,  # Serialize date if needed
                 msg["sender_id"],
                 msg["message_type"],
-                msg["content"],
-                str(msg["extra_data"]),
+                content,  # Serialize content if needed
+                serialized_extra_data,  # Serialize dict to JSON string
                 msg["reply_to_msg_id"],
                 msg["topic_title"],
                 msg["source_name"],
@@ -174,7 +281,15 @@ class Database:
             cursor.execute("SELECT * FROM messages ORDER BY date")
             columns = [description[0] for description in cursor.description]
             for row in cursor.fetchall():
-                yield dict(zip(columns, row))
+                row_dict = dict(zip(columns, row))
+                # Deserialize extra_data from JSON string back to dict
+                if row_dict.get("extra_data"):
+                    try:
+                        row_dict["extra_data"] = json.loads(row_dict["extra_data"])
+                    except (json.JSONDecodeError, TypeError):
+                        # If deserialization fails, keep as is
+                        pass
+                yield row_dict
 
     def get_message_by_id(self, message_id: int, source_group_id: int, topic_id: int):
         """
@@ -196,7 +311,17 @@ class Database:
             )
             columns = [description[0] for description in cursor.description]
             row = cursor.fetchone()
-            return dict(zip(columns, row)) if row else None
+            if row:
+                row_dict = dict(zip(columns, row))
+                # Deserialize extra_data from JSON string back to dict
+                if row_dict.get("extra_data"):
+                    try:
+                        row_dict["extra_data"] = json.loads(row_dict["extra_data"])
+                    except (json.JSONDecodeError, TypeError):
+                        # If deserialization fails, keep as is
+                        pass
+                return row_dict
+            return None
 
     def get_unique_sources(self):
         """
@@ -211,4 +336,15 @@ class Database:
                 "SELECT DISTINCT source_group_id, topic_id, source_name, topic_title FROM messages ORDER BY source_group_id, topic_id"
             )
             columns = [description[0] for description in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            results = []
+            for row in cursor.fetchall():
+                row_dict = dict(zip(columns, row))
+                # Deserialize extra_data from JSON string back to dict if needed
+                if row_dict.get("extra_data"):
+                    try:
+                        row_dict["extra_data"] = json.loads(row_dict["extra_data"])
+                    except (json.JSONDecodeError, TypeError):
+                        # If deserialization fails, keep as is
+                        pass
+                results.append(row_dict)
+            return results

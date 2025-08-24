@@ -1,7 +1,9 @@
 import asyncio
+import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from src.core.app import initialize_app
 from src.history_extractor.telegram_extractor import TelegramExtractor
 
 
@@ -24,18 +26,30 @@ class TestTelegramExtractor(unittest.TestCase):
     """Test cases for the TelegramExtractor class."""
 
     def setUp(self):
-        """Set up test fixtures."""
-        self.mock_client = AsyncMock()  # Changed to AsyncMock
+        """Set up test fixtures before each test method."""
+        # Use real settings instead of MagicMock for better test reliability
+        with patch.dict(
+            os.environ,
+            {
+                "API_ID": "12345",
+                "API_HASH": "test_hash",
+                "PHONE": "1234567890",
+                "PASSWORD": "test_password",
+                "BOT_TOKEN": "test_bot_token",
+                "GROUP_IDS": "1,2,3",
+            },
+        ):
+            self.app_context = initialize_app()
+
+        self.mock_client = AsyncMock()
         self.mock_storage = MagicMock()
         self.extractor = TelegramExtractor(self.mock_client, self.mock_storage)
-        # Set up the settings with real values instead of MagicMock
-        mock_extraction_settings = MagicMock()
-        mock_extraction_settings.messages_per_request = 3000
-        mock_extraction_settings.ui_update_interval = 5
-        mock_extraction_settings.progress_update_messages = 100
-        mock_extraction_settings.batch_size = 250
-        self.extractor.settings = MagicMock()
-        self.extractor.settings.extraction = mock_extraction_settings
+
+        # Override settings with real values for the extraction settings
+        self.extractor.settings.telegram.extraction.messages_per_request = 3000
+        self.extractor.settings.telegram.extraction.ui_update_interval = 5
+        self.extractor.settings.telegram.extraction.progress_update_messages = 100
+        self.extractor.settings.telegram.extraction.batch_size = 250
 
     @patch("src.history_extractor.telegram_extractor.get_message_details")
     def test_extract_from_topic(self, mock_get_message_details):
@@ -51,11 +65,15 @@ class TestTelegramExtractor(unittest.TestCase):
 
         last_msg_ids = {}
 
+        # Create a proper datetime object for the message date
+        from datetime import datetime
+
+        msg_date = datetime(2024, 1, 1, 0, 0, 0)
+
         mock_msg = MagicMock()
         mock_msg.id = 1
         mock_msg.text = "hello"
-        mock_msg.date = MagicMock()
-        mock_msg.date.isoformat.return_value = "2024-01-01T00:00:00"
+        mock_msg.date = msg_date
         mock_msg.from_user = None
         mock_msg.sender_chat = None
         mock_msg.message_thread_id = 456  # Match the topic_id

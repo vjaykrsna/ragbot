@@ -75,6 +75,8 @@ def test_normalize_numbers(pipeline_setup):
     """
     Test the internal number normalization logic.
     """
+    from src.core.text_utils import normalize_numbers
+
     test_text = (
         "The price is 1,234.56 INR, which is about 15 million ₹ or 99% of the budget."
     )
@@ -93,7 +95,7 @@ def test_normalize_numbers(pipeline_setup):
         },
         {"span": "99%", "value": 99.0, "unit": "%", "confidence": "medium"},
     ]
-    result = pipeline_setup["pipeline"]._normalize_numbers(test_text)
+    result = normalize_numbers(test_text)
     assert result == expected
 
 

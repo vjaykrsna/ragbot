@@ -49,7 +49,8 @@ class Storage:
                 msg["source_group_id"] = msg.get("source_group_id") or msg.get(
                     "group_id"
                 )
-            msg["source_topic_id"] = topic_id
+            # Fix: Set the correct topic_id field
+            msg["topic_id"] = topic_id
             msg["source_saved_file"] = None  # No longer saving to individual files
             msg["ingestion_timestamp"] = ingestion_ts
             self.message_buffer.append(msg)

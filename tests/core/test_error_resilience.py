@@ -9,12 +9,14 @@ with 99% reliability.
 import asyncio
 import os
 import sqlite3
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pyrogram.errors import BadRequest, FloodWait, Forbidden, Unauthorized
 
 from src.core.app import initialize_app
+from src.core.config import get_settings
 from src.history_extractor.storage import Storage
 from src.history_extractor.telegram_extractor import TelegramExtractor
 
@@ -24,19 +26,35 @@ class TestErrorResilience(unittest.TestCase):
 
     def setUp(self):
         """Set up test environment with proper mocking."""
-        # Mock environment variables
-        with patch.dict(
-            os.environ,
-            {
-                "API_ID": "12345",
-                "API_HASH": "test_hash",
-                "PHONE": "1234567890",
-                "PASSWORD": "test_password",
-                "BOT_TOKEN": "test_bot_token",
-                "GROUP_IDS": "1,2,3",
-            },
-        ):
-            self.app_context = initialize_app()
+        # Create a temporary directory for the test database
+        self.temp_dir = tempfile.mkdtemp()
+        self.test_db_dir = os.path.join(self.temp_dir, "knowledge_base")
+
+        # Mock environment variables and override database path
+        env_vars = {
+            "API_ID": "12345",
+            "API_HASH": "test_hash",
+            "PHONE": "1234567890",
+            "PASSWORD": "test_password",
+            "BOT_TOKEN": "test_bot_token",
+            "GROUP_IDS": "1,2,3",
+        }
+
+        with patch.dict(os.environ, env_vars):
+            # Patch the PathSettings to use our temporary directory
+            original_get_settings = get_settings
+
+            def mock_get_settings():
+                settings = original_get_settings()
+                # Override the db_dir to use our test directory
+                settings.paths.db_dir = self.test_db_dir
+                return settings
+
+            with patch("src.core.app.get_settings", side_effect=mock_get_settings):
+                with patch(
+                    "src.core.config.get_settings", side_effect=mock_get_settings
+                ):
+                    self.app_context = initialize_app()
 
         self.mock_client = AsyncMock()
         self.storage = Storage(self.app_context)
@@ -44,9 +62,10 @@ class TestErrorResilience(unittest.TestCase):
 
     def tearDown(self):
         """Clean up test resources."""
-        if hasattr(self, "app_context"):
-            # Clean up database connections
-            pass
+        import shutil
+
+        if hasattr(self, "temp_dir") and os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     async def _run_with_timeout(self, coro, timeout=30):
         """Run async test with timeout to prevent hanging."""
@@ -105,7 +124,7 @@ class TestErrorResilience(unittest.TestCase):
         mock_entity.id = 123
         mock_entity.title = "Test Group"
 
-        # Mock unauthorized error
+        # Mock unauthorized error - make sure it's properly set up
         self.mock_client.get_chat = AsyncMock(
             side_effect=Unauthorized("Invalid API credentials")
         )
@@ -376,18 +395,42 @@ class TestProductionLikeScenarios(unittest.TestCase):
 
     def setUp(self):
         """Set up production-like test environment."""
-        with patch.dict(
-            os.environ,
-            {
-                "API_ID": "12345",
-                "API_HASH": "test_hash",
-                "PHONE": "1234567890",
-                "PASSWORD": "test_password",
-                "BOT_TOKEN": "test_bot_token",
-                "GROUP_IDS": "1,2,3",
-            },
-        ):
-            self.app_context = initialize_app()
+        # Create a temporary directory for the test database
+        self.temp_dir = tempfile.mkdtemp()
+        self.test_db_dir = os.path.join(self.temp_dir, "knowledge_base")
+
+        # Mock environment variables and override database path
+        env_vars = {
+            "API_ID": "12345",
+            "API_HASH": "test_hash",
+            "PHONE": "1234567890",
+            "PASSWORD": "test_password",
+            "BOT_TOKEN": "test_bot_token",
+            "GROUP_IDS": "1,2,3",
+        }
+
+        with patch.dict(os.environ, env_vars):
+            # Patch the PathSettings to use our temporary directory
+            original_get_settings = get_settings
+
+            def mock_get_settings():
+                settings = original_get_settings()
+                # Override the db_dir to use our test directory
+                settings.paths.db_dir = self.test_db_dir
+                return settings
+
+            with patch("src.core.app.get_settings", side_effect=mock_get_settings):
+                with patch(
+                    "src.core.config.get_settings", side_effect=mock_get_settings
+                ):
+                    self.app_context = initialize_app()
+
+    def tearDown(self):
+        """Clean up test resources."""
+        import shutil
+
+        if hasattr(self, "temp_dir") and os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     def test_system_resource_monitoring(self):
         """Test system resource monitoring during operations."""

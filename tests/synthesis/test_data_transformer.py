@@ -199,8 +199,10 @@ class TestDataTransformer(unittest.TestCase):
 
     def test_normalize_numbers_with_values(self):
         """Test normalizing numbers from text content."""
+        from src.core.text_utils import normalize_numbers
+
         text = "The price is 100 rs and distance is 5.5 km"
-        result = self.transformer._normalize_numbers(text)
+        result = normalize_numbers(text)
 
         expected_result = [
             {"span": "100 rs", "value": 100.0, "unit": "rs", "confidence": "medium"},
@@ -211,8 +213,10 @@ class TestDataTransformer(unittest.TestCase):
 
     def test_normalize_numbers_no_values(self):
         """Test normalizing text with no numeric values."""
+        from src.core.text_utils import normalize_numbers
+
         text = "Hello world"
-        result = self.transformer._normalize_numbers(text)
+        result = normalize_numbers(text)
         self.assertEqual(result, [])
 
 

@@ -50,6 +50,12 @@ class TestPipelineIntegration(unittest.TestCase):
         self.app_context.settings.paths.processed_data_dir = os.path.join(
             self.temp_dir, "processed"
         )
+        self.app_context.settings.paths.processed_conversations_file = os.path.join(
+            self.temp_dir, "processed", "processed_conversations.json"
+        )
+        self.app_context.settings.paths.user_map_file = os.path.join(
+            self.temp_dir, "processed", "user_map.json"
+        )
         os.makedirs(self.app_context.settings.paths.raw_data_dir, exist_ok=True)
         os.makedirs(self.app_context.settings.paths.processed_data_dir, exist_ok=True)
 
@@ -200,14 +206,14 @@ class TestPipelineIntegration(unittest.TestCase):
             )
 
         self.storage.save_messages_to_db("Test Group", 101, test_messages)
+        # Make sure to flush the buffer to actually save messages to the database
+        self.storage.close()
 
         # Create pipeline components
         data_source = DataSource(self.app_context.db)
         sorter = ExternalSorter()
-        anonymizer = Anonymizer()
-        conv_builder = ConversationBuilder(
-            time_threshold_seconds=300, session_window_seconds=3600
-        )
+        anonymizer = Anonymizer(self.app_context.settings.paths)
+        conv_builder = ConversationBuilder(self.app_context.settings.conversation)
 
         pipeline = DataProcessingPipeline(
             settings=self.app_context.settings,
@@ -235,9 +241,10 @@ class TestPipelineIntegration(unittest.TestCase):
 
             # Verify conversation structure
             for conv in conversations:
-                self.assertIn("messages", conv)
-                self.assertIn("participants", conv)
-                self.assertIsInstance(conv["messages"], list)
+                # Updated to check for actual fields in the conversation object
+                self.assertIn("conversation", conv)
+                self.assertIn("message_count", conv)
+                self.assertIsInstance(conv["conversation"], list)
 
     def test_error_recovery_in_pipeline(self):
         """Test error recovery mechanisms in the pipeline."""
@@ -380,7 +387,7 @@ class TestPipelineIntegration(unittest.TestCase):
 
         # Assert - Verify configuration consistency
         self.assertEqual(
-            extractor.settings.extraction.batch_size,
+            extractor.settings.telegram.extraction.batch_size,
             settings.telegram.extraction.batch_size,
         )
         self.assertEqual(storage.buffer_size, settings.telegram.extraction.buffer_size)

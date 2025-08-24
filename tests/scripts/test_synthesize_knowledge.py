@@ -16,6 +16,8 @@ class TestKnowledgeSynthesizer(unittest.TestCase):
         self.mock_progress_tracker = MagicMock()
         self.mock_failed_batch_handler = MagicMock()
 
+        self.mock_conversation_optimizer = MagicMock()
+
         self.synthesizer = KnowledgeSynthesizer(
             self.mock_settings,
             self.mock_db,
@@ -26,6 +28,7 @@ class TestKnowledgeSynthesizer(unittest.TestCase):
             self.mock_nugget_store,
             self.mock_progress_tracker,
             self.mock_failed_batch_handler,
+            self.mock_conversation_optimizer,
         )
 
     @patch("src.scripts.synthesize_knowledge.KnowledgeSynthesizer._setup_database")
