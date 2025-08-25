@@ -39,45 +39,47 @@ def register_services(settings: AppSettings, db: Database, db_client) -> None:
         db_client: The database client instance
     """
     # Register singleton instances
-    container.register_singleton_instance(DatabaseInterface, db)
+    container.register_singleton_instance(DatabaseInterface, db)  # type: ignore[type-abstract]
     container.register_singleton_instance(DatabaseClientInterface, db_client)
 
     # Register services as singletons
-    container.register_singleton(DataLoaderInterface, DataLoader)
-    container.register_singleton(ConversationOptimizerInterface, ConversationOptimizer)
-    container.register_singleton(ProgressTrackerInterface, ProgressTracker)
-    container.register_singleton(FailedBatchHandlerInterface, FailedBatchHandler)
+    container.register_singleton(DataLoaderInterface, DataLoader)  # type: ignore[type-abstract]
+    container.register_singleton(ConversationOptimizerInterface, ConversationOptimizer)  # type: ignore[type-abstract]
+    container.register_singleton(ProgressTrackerInterface, ProgressTracker)  # type: ignore[type-abstract]
+    container.register_singleton(FailedBatchHandlerInterface, FailedBatchHandler)  # type: ignore[type-abstract]
 
     # Register transient services (these might need to be recreated)
     container.register_transient_factory(
-        NuggetGeneratorInterface,
+        NuggetGeneratorInterface,  # type: ignore[type-abstract]
         lambda: NuggetGenerator(
             settings,
             Limiter(Rate(settings.synthesis.requests_per_minute, Duration.MINUTE)),
-            container.resolve(ConversationOptimizerInterface),
+            container.resolve(ConversationOptimizerInterface),  # type: ignore[type-abstract]
         ),
     )
     container.register_transient_factory(
-        NuggetEmbedderInterface,
+        NuggetEmbedderInterface,  # type: ignore[type-abstract]
         lambda: NuggetEmbedder(
             settings,
             Limiter(Rate(settings.synthesis.requests_per_minute, Duration.MINUTE)),
         ),
     )
-    container.register_transient(NuggetStorerInterface, NuggetStore)
+    container.register_transient(NuggetStorerInterface, NuggetStore)  # type: ignore[type-abstract]
 
     # Register factory for DataLoader with dependencies
     container.register_transient_factory(
-        DataLoaderInterface,
-        lambda: DataLoader(settings, container.resolve(DatabaseInterface)),
+        DataLoaderInterface,  # type: ignore[type-abstract]
+        lambda: DataLoader(settings, container.resolve(DatabaseInterface)),  # type: ignore[type-abstract]
     )
 
     # Register factory for ProgressTracker with settings
     container.register_transient_factory(
-        ProgressTrackerInterface, lambda: ProgressTracker(settings)
+        ProgressTrackerInterface,  # type: ignore[type-abstract]
+        lambda: ProgressTracker(settings),
     )
 
     # Register factory for FailedBatchHandler with settings
     container.register_transient_factory(
-        FailedBatchHandlerInterface, lambda: FailedBatchHandler(settings)
+        FailedBatchHandlerInterface,  # type: ignore[type-abstract]
+        lambda: FailedBatchHandler(settings),
     )

@@ -113,7 +113,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 def main() -> None:
     """Initialize and run the Telegram bot application."""
     try:
-        settings = initialize_app()
+        app_context = initialize_app()
+        settings = app_context.settings
 
         if not settings.telegram.bot_token:
             logger.error("TELEGRAM_BOT_TOKEN is not set; aborting bot startup.")
@@ -125,7 +126,7 @@ def main() -> None:
 
         # Initialize the RAG pipeline once (blocking) and add it to bot_data
         try:
-            rag_pipeline = RAGPipeline(settings)
+            rag_pipeline = RAGPipeline(settings, app_context.db_client)
             application.bot_data["rag_pipeline"] = rag_pipeline
             logger.info("RAG pipeline initialized successfully.")
         except Exception:

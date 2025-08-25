@@ -96,12 +96,52 @@ class Database(DatabaseInterface):
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(source_group_id)"
         )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS topics (
+                id INTEGER,
+                source_group_id INTEGER,
+                name TEXT,
+                icon_color INTEGER,
+                is_closed BOOLEAN,
+                is_hidden BOOLEAN,
+                is_pinned BOOLEAN,
+                PRIMARY KEY (id, source_group_id)
+            )
+            """
+        )
         conn.commit()
 
     def insert_messages(self, messages: List[Dict[str, Any]]):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             self._batch_insert_messages(cursor, messages)
+            conn.commit()
+
+    def insert_topics(self, topics: List[Any], source_group_id: int):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            topic_data = [
+                (
+                    topic.message_thread_id,
+                    source_group_id,
+                    topic.name,
+                    topic.icon_color,
+                    topic.is_closed,
+                    topic.is_hidden,
+                    getattr(topic, "is_pinned", False),
+                )
+                for topic in topics
+            ]
+            cursor.executemany(
+                """
+                INSERT OR REPLACE INTO topics (
+                    id, source_group_id, name, icon_color, is_closed, is_hidden, is_pinned
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                topic_data,
+            )
             conn.commit()
 
     def _batch_insert_messages(self, cursor, messages: List[Dict[str, Any]]):
