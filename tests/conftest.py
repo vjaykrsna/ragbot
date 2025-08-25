@@ -41,7 +41,7 @@ def event_loop():
 
 
 @pytest.fixture(scope="function")
-def mock_app_context():
+def mock_app_context(temp_db_dir):
     """Create a mock application context for testing."""
     with patch.dict(
         os.environ,
@@ -52,6 +52,7 @@ def mock_app_context():
             "PASSWORD": "test_password",
             "BOT_TOKEN": "test_bot_token",
             "GROUP_IDS": "1,2,3",
+            "DB_DIR": temp_db_dir,  # Use temp directory
             "LITELLM_CONFIG_JSON": '{"model_list": [{"model_name": "gemini-synthesis-model", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": "fake-key"}}, {"model_name": "gemini-embedding-model", "litellm_params": {"model": "gemini/text-embedding-004", "api_key": "fake-key"}}], "litellm_settings": {}}',
         },
     ):

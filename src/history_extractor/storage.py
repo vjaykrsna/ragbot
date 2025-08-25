@@ -70,6 +70,10 @@ class Storage:
         """Flush any remaining messages and clean up resources."""
         self._flush_buffer()
 
+    def clear_buffer(self):
+        """Clear the message buffer without flushing to database."""
+        self.message_buffer.clear()
+
     def load_last_msg_ids(self) -> Dict[str, int]:
         """
         Loads the last processed message ID for each topic from a file.

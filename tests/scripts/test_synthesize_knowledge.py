@@ -79,7 +79,7 @@ class TestKnowledgeSynthesizer(unittest.TestCase):
         self.mock_progress_tracker.load_processed_hashes.return_value = set()
         mock_process_batch.return_value = 1
         # Mock the optimizer to return the same conversations (bypass filtering)
-        self.mock_nugget_generator.optimizer.optimize_batch.return_value = [
+        self.mock_conversation_optimizer.optimize_conversations.return_value = [
             {
                 "id": 1,
                 "messages": [

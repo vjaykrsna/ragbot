@@ -5,6 +5,7 @@ Test script to verify the database fix for the extra_data serialization issue.
 
 import os
 import sys
+import tempfile
 from datetime import datetime
 
 # Add the src directory to the path
@@ -52,6 +53,12 @@ def test_database_insertion():
     """Test database insertion with various message types."""
     print("Testing database insertion...")
 
+    # Create temporary directory for test data
+    temp_dir = tempfile.mkdtemp()
+
+    # Set environment variable to use temp directory
+    os.environ["DB_DIR"] = temp_dir
+
     # Initialize app context
     app_context = initialize_app()
 
@@ -60,6 +67,11 @@ def test_database_insertion():
         cursor = conn.cursor()
         cursor.execute("DELETE FROM messages")
         conn.commit()
+
+    # Clean up temp directory
+    import shutil
+
+    shutil.rmtree(temp_dir)
 
     # Test messages with various data types including datetime objects
     # test_messages = [

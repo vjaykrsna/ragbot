@@ -7,7 +7,6 @@ from litellm import APIError
 from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
-from src.core.error_handler import retry_with_backoff
 from src.rag import litellm_client
 
 logger = structlog.get_logger(__name__)
@@ -40,7 +39,6 @@ class NuggetEmbedder:
         """
         return self._embed_nuggets_batch_with_retry(nuggets)
 
-    @retry_with_backoff
     def _embed_nuggets_batch_with_retry(
         self, nuggets: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:

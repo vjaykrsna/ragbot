@@ -13,7 +13,7 @@ def clear_settings_cache():
     get_settings.cache_clear()
 
 
-@patch("src.core.config.load_dotenv")
+@patch("src.core.config.loader.load_dotenv")
 def test_get_settings_happy_path(mock_load_dotenv):
     """
     Test that settings are loaded correctly when all environment variables are set.
@@ -73,7 +73,7 @@ def test_get_settings_happy_path(mock_load_dotenv):
         "LITELLM_CONFIG_JSON",
     ],
 )
-@patch("src.core.config.load_dotenv")
+@patch("src.core.config.loader.load_dotenv")
 def test_missing_required_env_vars(mock_load_dotenv, missing_var):
     """
     Test that a RuntimeError is raised if a required environment variable is missing.
@@ -97,7 +97,7 @@ def test_missing_required_env_vars(mock_load_dotenv, missing_var):
     assert f"'{missing_var}' must be set" in str(exc_info.value)
 
 
-@patch("src.core.config.load_dotenv")
+@patch("src.core.config.loader.load_dotenv")
 def test_default_values(mock_load_dotenv):
     """
     Test that default values are correctly applied for optional settings.

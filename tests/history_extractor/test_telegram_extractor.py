@@ -1,5 +1,6 @@
 import asyncio
 import os
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,6 +28,9 @@ class TestTelegramExtractor(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures before each test method."""
+        # Create temporary directory for test data
+        self.temp_dir = tempfile.mkdtemp()
+
         # Use real settings instead of MagicMock for better test reliability
         with patch.dict(
             os.environ,
@@ -37,9 +41,15 @@ class TestTelegramExtractor(unittest.TestCase):
                 "PASSWORD": "test_password",
                 "BOT_TOKEN": "test_bot_token",
                 "GROUP_IDS": "1,2,3",
+                "DB_DIR": self.temp_dir,  # Override to use temp directory
             },
         ):
             self.app_context = initialize_app()
+            # Override paths settings to use temp directory
+            self.app_context.settings.paths.data_dir = self.temp_dir
+            self.app_context.settings.paths.db_dir = os.path.join(
+                self.temp_dir, "knowledge_base"
+            )
 
         self.mock_client = AsyncMock()
         self.mock_storage = MagicMock()
@@ -50,6 +60,13 @@ class TestTelegramExtractor(unittest.TestCase):
         self.extractor.settings.telegram.extraction.ui_update_interval = 5
         self.extractor.settings.telegram.extraction.progress_update_messages = 100
         self.extractor.settings.telegram.extraction.batch_size = 250
+
+    def tearDown(self):
+        """Clean up test resources."""
+        import shutil
+
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch("src.history_extractor.telegram_extractor.get_message_details")
     def test_extract_from_topic(self, mock_get_message_details):

@@ -4,41 +4,41 @@ Centralized configuration management.
 This module provides a clean interface to the restructured configuration system.
 """
 
-from .config.loader import get_settings as get_settings
-from .config.models import (
+from .loader import get_settings as get_settings
+from .models import (
     AppSettings as AppSettings,
 )
-from .config.models import (
+from .models import (
     ConversationSettings as ConversationSettings,
 )
-from .config.models import (
+from .models import (
     LiteLLMCacheSettings as LiteLLMCacheSettings,
 )
-from .config.models import (
+from .models import (
     LiteLLMModelInfo as LiteLLMModelInfo,
 )
-from .config.models import (
+from .models import (
     LiteLLMModelParams as LiteLLMModelParams,
 )
-from .config.models import (
+from .models import (
     LiteLLMRouterSettings as LiteLLMRouterSettings,
 )
-from .config.models import (
+from .models import (
     LiteLLMSettings as LiteLLMSettings,
 )
-from .config.models import (
+from .models import (
     PathSettings as PathSettings,
 )
-from .config.models import (
+from .models import (
     RAGSettings as RAGSettings,
 )
-from .config.models import (
+from .models import (
     SynthesisSettings as SynthesisSettings,
 )
-from .config.models import (
+from .models import (
     TelegramExtractionSettings as TelegramExtractionSettings,
 )
-from .config.models import (
+from .models import (
     TelegramSettings as TelegramSettings,
 )
 

@@ -9,8 +9,8 @@ import tempfile
 from datetime import datetime
 from unittest.mock import patch
 
-# Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+# Add the project root directory to the path
+sys.path.insert(0, os.path.dirname(__file__).replace("/tests", ""))
 
 from src.core.app import initialize_app
 from src.core.database import serialize_extra_data
