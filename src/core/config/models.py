@@ -61,6 +61,7 @@ class PathSettings:
     failed_batches_file: str = field(init=False)
     processed_hashes_file: str = field(init=False)
     prompt_file: str = field(init=False)
+    synthesis_checkpoint_file: str = field(init=False)
 
     def __post_init__(self):
         from .utils import get_project_root
@@ -86,6 +87,9 @@ class PathSettings:
             self.processed_data_dir, "processed_hashes.json"
         )
         self.prompt_file = os.path.join(self.docs_dir, "knowledge_synthesis_prompt.md")
+        self.synthesis_checkpoint_file = os.path.join(
+            self.processed_data_dir, "synthesis_checkpoint.json"
+        )
 
 
 @dataclass
