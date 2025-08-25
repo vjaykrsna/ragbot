@@ -66,6 +66,18 @@ class Storage:
             db.insert_messages(self.message_buffer)
             self.message_buffer.clear()
 
+    def save_topics(self, topics: List[Any], source_group_id: int):
+        """
+        Saves a list of topics to the database.
+
+        Args:
+            topics: A list of topics to save.
+            source_group_id: The ID of the group the topics belong to.
+        """
+        if topics:
+            db = self.app_context.db
+            db.insert_topics(topics, source_group_id)
+
     def close(self):
         """Flush any remaining messages and clean up resources."""
         self._flush_buffer()
