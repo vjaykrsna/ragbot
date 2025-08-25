@@ -7,12 +7,13 @@ from litellm import APIError
 from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
+from src.core.di.interfaces import NuggetEmbedderInterface
 from src.rag import litellm_client
 
 logger = structlog.get_logger(__name__)
 
 
-class NuggetEmbedder:
+class NuggetEmbedder(NuggetEmbedderInterface):
     """
     Handles the embedding of knowledge nuggets.
 
@@ -52,7 +53,6 @@ class NuggetEmbedder:
             A list of nuggets with embeddings.
         """
 
-        @self.limiter.as_decorator()
         def _decorated_embedding():
             valid_nuggets = [
                 n
@@ -106,4 +106,5 @@ class NuggetEmbedder:
 
             return valid_nuggets
 
+        # Call the function and return its result
         return _decorated_embedding()

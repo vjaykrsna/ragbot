@@ -1,7 +1,7 @@
 import asyncio
 import time
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import structlog
 from pyrogram import Client
@@ -70,7 +70,7 @@ class TelegramExtractor:
         self,
         entity: Any,
         topic: Any,
-        last_msg_ids: Dict[str, int],
+        last_msg_ids: Dict[Tuple[int, int], int],
         last_msg_ids_lock=None,
     ) -> int:
         """
@@ -87,7 +87,7 @@ class TelegramExtractor:
         group_id = entity.id
         topic_id = topic.id
         topic_title = normalize_title(getattr(topic, "title", "General"))
-        last_id_key = f"{group_id}_{topic_id}"
+        last_id_key = (group_id, topic_id)
         last_id = last_msg_ids.get(last_id_key, 0)
         max_id = 0
 
@@ -111,25 +111,110 @@ class TelegramExtractor:
             f"  - 📥 Extracting from topic: '{topic_title}' (ID: {topic_id}) [Since message ID > {last_id}]"
         )
 
-        async for msg in self.client.get_chat_history(
+        chat_history = self.client.get_chat_history(
             entity.id if hasattr(entity, "id") else entity, offset_id=last_id
-        ):
-            # For topics, filter by message_thread_id
-            msg_thread_id = getattr(msg, "message_thread_id", 0) or 0
-            if topic_id == 0:
-                # For general topic, include messages with no thread ID (general messages)
-                if msg_thread_id != 0:
+        )
+        if chat_history is not None:
+            async for msg in chat_history:
+                # For topics, filter by message_thread_id
+                msg_thread_id = getattr(msg, "message_thread_id", 0) or 0
+                if topic_id == 0:
+                    # For general topic, include messages with no thread ID (general messages)
+                    if msg_thread_id != 0:
+                        continue
+                else:
+                    # For specific topics, only include messages with matching thread ID
+                    if msg_thread_id != topic_id:
+                        continue
+                # Skip service messages
+                if getattr(msg, "service", False):
                     continue
-            else:
-                # For specific topics, only include messages with matching thread ID
-                if msg_thread_id != topic_id:
+                # Skip messages without text or media
+                if not getattr(msg, "text", None) and not getattr(msg, "media", None):
+                    processed_count += 1
+                    # Update progress display every N messages or every M seconds (based on config)
+                    current_time = datetime.now()
+                    elapsed_since_last_update = (
+                        current_time - last_update_time_dt
+                    ).total_seconds()
+                    if (
+                        processed_count
+                        % self.settings.telegram.extraction.progress_update_messages
+                        == 0
+                        or elapsed_since_last_update
+                        > self.settings.telegram.extraction.ui_update_interval
+                    ):
+                        elapsed_total = (current_time - start_time_dt).total_seconds()
+                        speed = (
+                            processed_count / elapsed_total if elapsed_total > 0 else 0
+                        )
+                        memory_usage = get_memory_usage_mb()
+                        # Use \r to overwrite the same line
+                        print(
+                            f"\r    💬 {topic_title:<20} | "
+                            f"Messages: {processed_count:>6} | "
+                            f"Saved: {saved_count:>6} | "
+                            f"Speed: {speed:>5.1f} msg/sec | "
+                            f"Memory: {memory_usage:>6.1f}MB",
+                            end="",
+                            flush=True,
+                        )
+                        last_update_time_dt = current_time
                     continue
-            # Skip service messages
-            if getattr(msg, "service", False):
-                continue
-            # Skip messages without text or media
-            if not getattr(msg, "text", None) and not getattr(msg, "media", None):
+
+                try:
+                    message_type, content, extra_data = get_message_details(msg)
+                except Exception as e:
+                    logger.warning(f"Failed to process message {msg.id}: {e}")
+                    processed_count += 1
+                    continue
+
+                if not content:
+                    processed_count += 1
+                    continue
+
+                # Get sender information
+                sender_id = None
+                if hasattr(msg, "from_user") and msg.from_user:
+                    sender_id = msg.from_user.id
+                elif hasattr(msg, "sender_chat") and msg.sender_chat:
+                    sender_id = msg.sender_chat.id
+
+                message_dict = {
+                    "id": msg.id,
+                    "date": (
+                        msg.date.isoformat()
+                        if isinstance(msg.date, datetime)
+                        else datetime.fromtimestamp(msg.date).isoformat()
+                    ),
+                    "sender_id": sender_id,
+                    "message_type": message_type,
+                    "content": content,
+                    "extra_data": extra_data,
+                    "reply_to_msg_id": getattr(msg, "reply_to_message_id", None),
+                    "topic_id": topic_id,
+                    "topic_title": topic_title,
+                    "source_name": (
+                        entity.title if hasattr(entity, "title") else str(entity)
+                    ),
+                    "source_group_id": entity.id if hasattr(entity, "id") else group_id,
+                    "ingestion_timestamp": datetime.now().isoformat(),
+                }
+
+                # Estimate message size for dynamic batch sizing
+                if processed_count == 1:  # Estimate size from first message
+                    message_size_estimate = estimate_message_size(message_dict)
+                    # Adjust batch size based on available memory
+                    batch_size = calculate_dynamic_batch_size(
+                        self.settings.telegram.extraction.batch_size,
+                        message_size_estimate,
+                    )
+
+                message_batch.append(message_dict)
+                max_id = max(max_id, msg.id)
                 processed_count += 1
+                saved_count += 1
+
                 # Update progress display every N messages or every M seconds (based on config)
                 current_time = datetime.now()
                 elapsed_since_last_update = (
@@ -156,115 +241,35 @@ class TelegramExtractor:
                         flush=True,
                     )
                     last_update_time_dt = current_time
-                continue
 
-            try:
-                message_type, content, extra_data = get_message_details(msg)
-            except Exception as e:
-                logger.warning(f"Failed to process message {msg.id}: {e}")
-                processed_count += 1
-                continue
-
-            if not content:
-                processed_count += 1
-                continue
-
-            # Get sender information
-            sender_id = None
-            if hasattr(msg, "from_user") and msg.from_user:
-                sender_id = msg.from_user.id
-            elif hasattr(msg, "sender_chat") and msg.sender_chat:
-                sender_id = msg.sender_chat.id
-
-            message_dict = {
-                "id": msg.id,
-                "date": (
-                    msg.date.isoformat()
-                    if isinstance(msg.date, datetime)
-                    else datetime.fromtimestamp(msg.date).isoformat()
-                ),
-                "sender_id": sender_id,
-                "message_type": message_type,
-                "content": content,
-                "extra_data": extra_data,
-                "reply_to_msg_id": getattr(msg, "reply_to_message_id", None),
-                "topic_id": topic_id,
-                "topic_title": topic_title,
-                "source_name": (
-                    entity.title if hasattr(entity, "title") else str(entity)
-                ),
-                "source_group_id": entity.id if hasattr(entity, "id") else group_id,
-                "ingestion_timestamp": datetime.now().isoformat(),
-            }
-
-            # Estimate message size for dynamic batch sizing
-            if processed_count == 1:  # Estimate size from first message
-                message_size_estimate = estimate_message_size(message_dict)
-                # Adjust batch size based on available memory
-                batch_size = calculate_dynamic_batch_size(
-                    self.settings.telegram.extraction.batch_size, message_size_estimate
-                )
-
-            message_batch.append(message_dict)
-            max_id = max(max_id, msg.id)
-            processed_count += 1
-            saved_count += 1
-
-            # Update progress display every N messages or every M seconds (based on config)
-            current_time = datetime.now()
-            elapsed_since_last_update = (
-                current_time - last_update_time_dt
-            ).total_seconds()
-            if (
-                processed_count
-                % self.settings.telegram.extraction.progress_update_messages
-                == 0
-                or elapsed_since_last_update
-                > self.settings.telegram.extraction.ui_update_interval
-            ):
-                elapsed_total = (current_time - start_time_dt).total_seconds()
-                speed = processed_count / elapsed_total if elapsed_total > 0 else 0
-                memory_usage = get_memory_usage_mb()
-                # Use \r to overwrite the same line
-                print(
-                    f"\r    💬 {topic_title:<20} | "
-                    f"Messages: {processed_count:>6} | "
-                    f"Saved: {saved_count:>6} | "
-                    f"Speed: {speed:>5.1f} msg/sec | "
-                    f"Memory: {memory_usage:>6.1f}MB",
-                    end="",
-                    flush=True,
-                )
-                last_update_time_dt = current_time
-
-            # When batch is full, save to database
-            if len(message_batch) >= batch_size:
-                if message_batch:
-                    full_title = f"{entity.title}_{topic_title}"
-                    self.storage.save_messages_to_db(
-                        full_title, topic_id, message_batch
-                    )
-                    total_saved += len(message_batch)
-                    self.metrics.record_messages(len(message_batch))
-                    message_batch = []  # Clear the batch
-
-                    # Log metrics periodically
-                    if (
-                        total_saved
-                        % (
-                            self.settings.telegram.extraction.progress_update_messages
-                            * 5
+                # When batch is full, save to database
+                if len(message_batch) >= batch_size:
+                    if message_batch:
+                        full_title = f"{entity.title}_{topic_title}"
+                        self.storage.save_messages_to_db(
+                            full_title, topic_id, message_batch
                         )
-                        == 0
-                    ):
-                        self.metrics.log_summary()
+                        total_saved += len(message_batch)
+                        self.metrics.record_messages(len(message_batch))
+                        message_batch = []  # Clear the batch
 
-                    # Re-estimate batch size after each batch to adapt to changing conditions
-                    if processed_count > 1:
-                        batch_size = calculate_dynamic_batch_size(
-                            self.settings.telegram.extraction.batch_size,
-                            message_size_estimate,
-                        )
+                        # Log metrics periodically
+                        if (
+                            total_saved
+                            % (
+                                self.settings.telegram.extraction.progress_update_messages
+                                * 5
+                            )
+                            == 0
+                        ):
+                            self.metrics.log_summary()
+
+                        # Re-estimate batch size after each batch to adapt to changing conditions
+                        if processed_count > 1:
+                            batch_size = calculate_dynamic_batch_size(
+                                self.settings.telegram.extraction.batch_size,
+                                message_size_estimate,
+                            )
 
         # Save any remaining messages in the batch
         if message_batch:
@@ -323,7 +328,7 @@ class TelegramExtractor:
     async def extract_from_group_id(
         self,
         group_id: int,
-        last_msg_ids: Dict[int, int],
+        last_msg_ids: Dict[Tuple[int, int], int],
         entity=None,
         last_msg_ids_lock=None,
     ) -> int:

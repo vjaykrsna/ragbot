@@ -17,7 +17,7 @@ class Storage:
     def __init__(self, app_context: AppContext):
         self.app_context = app_context
         self.settings = app_context.settings
-        self.message_buffer = []  # Buffer to accumulate messages
+        self.message_buffer: List[Dict[str, Any]] = []  # Buffer to accumulate messages
         self.buffer_size = (
             self.settings.telegram.extraction.buffer_size
         )  # Use configured buffer size

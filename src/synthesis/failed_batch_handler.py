@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import structlog
 
 from src.core.config import AppSettings
+from src.core.di.interfaces import FailedBatchHandlerInterface
 
 logger = structlog.get_logger(__name__)
 
@@ -14,7 +15,7 @@ logger = structlog.get_logger(__name__)
 fail_file_lock = threading.Lock()
 
 
-class FailedBatchHandler:
+class FailedBatchHandler(FailedBatchHandlerInterface):
     """
     Handles the saving of failed batches.
 

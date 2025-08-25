@@ -52,7 +52,7 @@ class CheckpointManager:
 
     def __init__(self, checkpoint_file: str):
         self.checkpoint_file = checkpoint_file
-        self.last_checkpoint = {}
+        self.last_checkpoint: Dict[str, Any] = {}
 
     def save_checkpoint(self, **kwargs) -> None:
         """

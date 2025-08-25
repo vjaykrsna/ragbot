@@ -11,10 +11,12 @@ from typing import Any, Dict, List
 
 import structlog
 
+from src.core.di.interfaces import ConversationOptimizerInterface
+
 logger = structlog.get_logger(__name__)
 
 
-class ConversationOptimizer:
+class ConversationOptimizer(ConversationOptimizerInterface):
     """Optimizes conversations before synthesis to reduce API costs."""
 
     def __init__(self):
@@ -131,7 +133,7 @@ class ConversationOptimizer:
 
         return unique_conversations
 
-    def optimize_batch(
+    def optimize_conversations(
         self, conversations: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """

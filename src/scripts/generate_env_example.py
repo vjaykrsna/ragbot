@@ -20,10 +20,10 @@ from typing import Dict
 
 # --- Configuration ---
 SRC_DIRECTORY = "src"
-THIRD_PARTY_VARS = {
+THIRD_PARTY_VARS: Dict[str, Dict[str, str]] = {
     # This section is for variables that may not be found by the AST scanner,
     # typically because they are used by third-party libraries called via exec
-    # or not directly accessed with os.getenv in our code.
+    # or not directly accessed with os.getenv in our codebase.
 }
 
 # --- Manual Section ---

@@ -1,11 +1,13 @@
 import json
 import threading
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Union
 
 import chromadb
 import structlog
 from chromadb.api.models.Collection import Collection
+
+from src.core.di.interfaces import NuggetStorerInterface
 
 logger = structlog.get_logger(__name__)
 
@@ -13,7 +15,7 @@ logger = structlog.get_logger(__name__)
 chroma_lock = threading.Lock()
 
 
-class NuggetStore:
+class NuggetStore(NuggetStorerInterface):
     """
     Handles the storage of knowledge nuggets in ChromaDB.
     """
@@ -38,7 +40,9 @@ class NuggetStore:
             with chroma_lock:
                 ids = [str(uuid.uuid4()) for _ in nuggets_with_embeddings]
                 embeddings = [n["embedding"] for n in nuggets_with_embeddings]
+                # Prepare metadata for ChromaDB
                 metadatas = []
+
                 for n in nuggets_with_embeddings:
                     meta = n.copy()
                     del meta["embedding"]
@@ -53,15 +57,33 @@ class NuggetStore:
                             else:
                                 meta[key] = json.dumps(value)
                     # ChromaDB cannot handle None values in metadata, so we filter them out.
-                    sanitized_meta = {k: v for k, v in meta.items() if v is not None}
+                    # Also ensure all values are of allowed types (str, int, float, bool, None)
+                    sanitized_meta: Dict[str, Union[str, int, float, bool, None]] = {}
+                    for k, v in meta.items():
+                        if v is None:
+                            continue
+                        # Convert values to allowed types
+                        if isinstance(v, (str, int, float, bool)):
+                            sanitized_meta[k] = v
+                        elif isinstance(v, (list, dict)):
+                            # Convert complex types to JSON strings
+                            sanitized_meta[k] = json.dumps(v)
+                        else:
+                            # Convert everything else to string
+                            sanitized_meta[k] = str(v)
                     metadatas.append(sanitized_meta)
 
                 documents = [n["detailed_analysis"] for n in nuggets_with_embeddings]
 
+                from typing import cast
+
                 collection.add(
                     ids=ids,
                     embeddings=embeddings,
-                    metadatas=metadatas,
+                    metadatas=cast(
+                        List[Mapping[str, Union[str, int, float, bool, None]]],
+                        metadatas,
+                    ),
                     documents=documents,
                 )
             return len(nuggets_with_embeddings)

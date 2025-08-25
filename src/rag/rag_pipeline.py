@@ -1,10 +1,12 @@
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
-import chromadb
+import numpy as np
 import structlog
+from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 
 from src.core.config import AppSettings
 from src.rag import litellm_client
@@ -36,28 +38,29 @@ def sanitize_query_text(text: str) -> str:
     return sanitized[:2000]  # Limit length
 
 
-class LiteLLMEmbeddingFunction:
+class LiteLLMEmbeddingFunction(EmbeddingFunction):
     """Wrapper for litellm.embed to conform to ChromaDB's interface."""
 
     def __init__(self, model_name: str):
         self._model_name = model_name
 
-    def __call__(self, input: List[str]) -> List[List[float]]:
+    def __call__(self, input: Documents) -> Embeddings:
         return litellm_client.embed(input)
 
-    def name(self) -> str:
-        return self._model_name
+    @classmethod
+    def name(cls) -> str:
+        return "LiteLLMEmbeddingFunction"
 
 
 class RAGPipeline:
     """Retrieval-Augmented Generation pipeline."""
 
-    def __init__(self, settings: AppSettings, db_client: chromadb.Client) -> None:
+    def __init__(self, settings: AppSettings, db_client: ClientAPI) -> None:
         self.settings = settings
         self.db_client = db_client
         try:
             embedding_function = LiteLLMEmbeddingFunction(
-                model_name=self.settings.litellm.embedding_model_name
+                model_name=self.settings.litellm.embedding_model_name or ""
             )
             self.collection: Collection = self.db_client.get_or_create_collection(
                 name=self.settings.rag.collection_name,
@@ -107,13 +110,24 @@ class RAGPipeline:
         """Retrieve top-n candidate nuggets from the vector DB and re-rank them."""
         try:
             results = self.collection.query(
-                query_embeddings=[query_embedding],
+                query_embeddings=np.array([query_embedding], dtype=np.float32),
                 n_results=n_results,
                 include=["metadatas", "distances"],
             )
-            nuggets = results.get("metadatas", [[]])[0]
-            distances = results.get("distances", [[]])[0]
-            return self.rerank_and_filter_nuggets(nuggets, distances)
+            metadatas = results.get("metadatas")
+            if metadatas is None or len(metadatas) == 0:
+                nuggets = []
+            else:
+                nuggets = metadatas[0]
+
+            distances_list = results.get("distances")
+            if distances_list is None or len(distances_list) == 0:
+                distances = []
+            else:
+                distances = distances_list[0]
+            return self.rerank_and_filter_nuggets(
+                cast(List[Dict[str, Any]], nuggets), distances
+            )
         except Exception:
             logger.exception("Failed to retrieve context from ChromaDB")
             return []
@@ -220,7 +234,7 @@ if __name__ == "__main__":
 
     # This is for demonstration and testing purposes.
     # In a real application, the settings would be passed from the entrypoint.
-    app_settings = initialize_app()
-    rp = RAGPipeline(app_settings)
+    app_context = initialize_app()
+    rp = RAGPipeline(app_context.settings, app_context.db_client)
     q = "What was the discussion about regarding the project architecture?"
     print(rp.query(q))

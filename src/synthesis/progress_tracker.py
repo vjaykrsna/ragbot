@@ -5,11 +5,12 @@ from typing import Set
 import structlog
 
 from src.core.config import AppSettings
+from src.core.di.interfaces import ProgressTrackerInterface
 
 logger = structlog.get_logger(__name__)
 
 
-class ProgressTracker:
+class ProgressTracker(ProgressTrackerInterface):
     """
     Manages the state of the synthesis process, including progress and processed hashes.
 

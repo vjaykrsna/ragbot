@@ -1,5 +1,5 @@
 import argparse
-from typing import Any, Dict
+from typing import Any
 
 import chromadb
 from rich.console import Console
@@ -15,7 +15,7 @@ def get_app_context():
     return initialize_app()
 
 
-def display_nugget_details(nuggets: Dict[str, Any]):
+def display_nugget_details(nuggets: Any):
     """Displays the details of the most recent nuggets in a rich table."""
     console = Console()
     if not nuggets or not nuggets.get("metadatas"):

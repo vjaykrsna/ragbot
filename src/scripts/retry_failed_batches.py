@@ -9,7 +9,7 @@ It attempts to reprocess them with enhanced error handling and different paramet
 import json
 import os
 import time
-from typing import Dict
+from typing import Dict, Optional
 
 import structlog
 from dotenv import load_dotenv
@@ -40,7 +40,9 @@ class FailedBatchRetrier:
         self.nugget_store = NuggetStore()
         self.rag_pipeline = RAGPipeline(self.settings, self.app_context.db_client)
 
-    def retry_failed_batches(self, failed_file_path: str = None) -> Dict[str, int]:
+    def retry_failed_batches(
+        self, failed_file_path: Optional[str] = None
+    ) -> Dict[str, int]:
         """
         Retry processing of failed batches.
 
@@ -77,7 +79,7 @@ class FailedBatchRetrier:
                     )
 
                     # Attempt to reprocess the batch
-                    nuggets = self.nugget_generator.generate_nuggets(
+                    nuggets = self.nugget_generator.generate_nuggets_batch(
                         conv_batch, prompt_template
                     )
 
@@ -120,7 +122,9 @@ class FailedBatchRetrier:
         logger.info(f"Retry completed. Stats: {stats}")
         return stats
 
-    def cleanup_successful_retries(self, failed_file_path: str = None) -> None:
+    def cleanup_successful_retries(
+        self, failed_file_path: Optional[str] = None
+    ) -> None:
         """
         Remove successfully retried batches from the failed batches file.
         This is optional - you might want to keep the history.

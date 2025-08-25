@@ -76,7 +76,7 @@ class TestLiteLLMClient(unittest.TestCase):
 
         result = litellm_client.complete(prompt, max_retries=3)
 
-        self.assertIsNone(result)
+        self.assertEqual(result, "")  # Should return empty string, not None
         self.assertEqual(mock_router.completion.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 3)
 

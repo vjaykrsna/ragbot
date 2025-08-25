@@ -4,12 +4,13 @@ import structlog
 
 from src.core.config import AppSettings
 from src.core.database import Database
+from src.core.di.interfaces import DatabaseInterface, DataLoaderInterface
 from src.synthesis.data_transformer import DataTransformer
 
 logger = structlog.get_logger(__name__)
 
 
-class DataLoader:
+class DataLoader(DataLoaderInterface):
     """
     Handles loading of processed data and prompt templates.
 
@@ -18,7 +19,7 @@ class DataLoader:
         db: Optional database instance to use. If not provided, a new one will be created.
     """
 
-    def __init__(self, settings: AppSettings, db: Database = None):
+    def __init__(self, settings: AppSettings, db: Optional[DatabaseInterface] = None):
         self.settings = settings
         self.db = db or Database(settings.paths)
         self.transformer = DataTransformer()

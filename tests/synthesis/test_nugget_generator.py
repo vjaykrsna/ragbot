@@ -49,7 +49,7 @@ def test_generate_nuggets_happy_path(mock_litellm_client, nugget_generator_setup
     prompt = "test prompt"
 
     # Act
-    result = nugget_generator_setup["nugget_generator"].generate_nuggets(
+    result = nugget_generator_setup["nugget_generator"].generate_nuggets_batch(
         conv_batch, prompt
     )
 

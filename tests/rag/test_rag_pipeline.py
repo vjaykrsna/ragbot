@@ -76,7 +76,7 @@ def rag_pipeline_setup():
     shutil.rmtree(test_dir)
 
 
-@patch("src.rag.rag_pipeline.chromadb.PersistentClient")
+@patch("chromadb.PersistentClient")
 def test_chromadb_connection_error(mock_chromadb_client_patch, rag_pipeline_setup):
     """Test that an exception during collection creation is raised."""
     rag_pipeline_setup[
@@ -169,7 +169,7 @@ def test_rerank_with_invalid_timestamp(rag_pipeline_setup):
     assert reranked[0]["last_message_timestamp"] == "2023-01-01T00:00:00Z"
 
 
-@patch("src.rag.rag_pipeline.chromadb.PersistentClient")
+@patch("chromadb.PersistentClient")
 @patch("src.rag.rag_pipeline.litellm_client")
 def test_query_pipeline(
     mock_litellm_client_patch, mock_chromadb_client_patch, rag_pipeline_setup
@@ -212,6 +212,8 @@ def test_query_pipeline(
 @patch("src.rag.rag_pipeline.litellm_client")
 def test_embedding_function_wrapper(mock_litellm_client):
     """Test the LiteLLMEmbeddingFunction wrapper."""
+    import numpy as np
+
     mock_litellm_client.embed.return_value = [[0.1, 0.2]]
 
     embed_func = LiteLLMEmbeddingFunction("test-model")
@@ -219,7 +221,7 @@ def test_embedding_function_wrapper(mock_litellm_client):
     # Test __call__
     result = embed_func(["test input"])
     mock_litellm_client.embed.assert_called_once_with(["test input"])
-    assert result == [[0.1, 0.2]]
+    np.testing.assert_allclose(result, [[0.1, 0.2]], rtol=1e-6)
 
     # Test name
-    assert embed_func.name() == "test-model"
+    assert embed_func.name() == "LiteLLMEmbeddingFunction"

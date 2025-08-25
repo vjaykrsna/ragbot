@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List
 
 from src.core.config import PathSettings
+from src.core.di.interfaces import DatabaseInterface
 from src.core.serializer import (
     deserialize_extra_data,
     serialize_content,
@@ -13,7 +14,7 @@ from src.core.serializer import (
 )
 
 
-class Database:
+class Database(DatabaseInterface):
     def __init__(self, settings: PathSettings, pool_size: int = 10):  # Back to 10
         os.makedirs(settings.db_dir, exist_ok=True)
         self.db_path = os.path.join(settings.db_dir, "ragbot.sqlite")
@@ -184,9 +185,11 @@ class Database:
             for row in cursor.fetchall():
                 row_dict = dict(zip(columns, row))
                 # Deserialize extra_data from JSON string back to dict
-                row_dict["extra_data"] = deserialize_extra_data(
-                    row_dict.get("extra_data")
-                )
+                extra_data_value = row_dict.get("extra_data")
+                if extra_data_value is not None:
+                    row_dict["extra_data"] = deserialize_extra_data(extra_data_value)
+                else:
+                    row_dict["extra_data"] = {}
                 yield row_dict
 
     def get_message_by_id(self, message_id: int, source_group_id: int, topic_id: int):
@@ -212,9 +215,11 @@ class Database:
             if row:
                 row_dict = dict(zip(columns, row))
                 # Deserialize extra_data from JSON string back to dict
-                row_dict["extra_data"] = deserialize_extra_data(
-                    row_dict.get("extra_data")
-                )
+                extra_data_value = row_dict.get("extra_data")
+                if extra_data_value is not None:
+                    row_dict["extra_data"] = deserialize_extra_data(extra_data_value)
+                else:
+                    row_dict["extra_data"] = {}
                 return row_dict
             return None
 
@@ -235,9 +240,11 @@ class Database:
             for row in cursor.fetchall():
                 row_dict = dict(zip(columns, row))
                 # Deserialize extra_data from JSON string back to dict if needed
-                row_dict["extra_data"] = deserialize_extra_data(
-                    row_dict.get("extra_data")
-                )
+                extra_data_value = row_dict.get("extra_data")
+                if extra_data_value is not None:
+                    row_dict["extra_data"] = deserialize_extra_data(extra_data_value)
+                else:
+                    row_dict["extra_data"] = {}
                 results.append(row_dict)
             return results
 

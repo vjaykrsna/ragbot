@@ -41,7 +41,7 @@ class StateManager:
         self.progress_file = settings.paths.synthesis_progress_file
         self.processed_hashes_file = settings.paths.processed_hashes_file
         self.failed_batches_file = settings.paths.failed_batches_file
-        self.last_checkpoint = {}
+        self.last_checkpoint: Dict[str, Any] = {}
 
     # Checkpoint Management
     def save_checkpoint(self, **kwargs) -> None:

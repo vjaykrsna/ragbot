@@ -13,6 +13,7 @@ from src.core.app import initialize_app
 from src.core.config import AppSettings
 from src.core.database import Database
 from src.core.error_handler import AlertManager, CheckpointManager
+from src.rag.rag_pipeline import LiteLLMEmbeddingFunction
 from src.synthesis.conversation_optimizer import ConversationOptimizer
 from src.synthesis.data_loader import DataLoader
 from src.synthesis.failed_batch_handler import FailedBatchHandler
@@ -77,6 +78,16 @@ class KnowledgeSynthesizer:
         # Rate limiting for API calls
         self.limiter = Limiter(
             Rate(settings.synthesis.requests_per_minute, Duration.MINUTE)
+        )
+
+    def _get_or_create_collection(self, collection_name: str):
+        """Get or create a collection in the database."""
+        embedding_function = LiteLLMEmbeddingFunction(
+            model_name=self.settings.litellm.embedding_model_name or ""
+        )
+        return self.db_client.get_or_create_collection(
+            name=collection_name,
+            embedding_function=embedding_function,
         )
 
     def run(self) -> None:
@@ -202,6 +213,11 @@ class KnowledgeSynthesizer:
 
         # Load the prompt template
         prompt_template = self.data_loader.load_prompt_template()
+        if prompt_template is None:
+            logger.error(
+                "Failed to load prompt template. Cannot proceed with synthesis."
+            )
+            return
 
         # Get the database collection
         collection = self._get_or_create_collection(collection_name)

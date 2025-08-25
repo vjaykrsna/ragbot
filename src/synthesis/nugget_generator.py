@@ -2,12 +2,16 @@ import json
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import structlog
 from pyrate_limiter import Limiter
 
 from src.core.config import AppSettings
+from src.core.di.interfaces import (
+    ConversationOptimizerInterface,
+    NuggetGeneratorInterface,
+)
 from src.core.error_handler import (
     default_alert_manager,
     handle_critical_errors,
@@ -20,7 +24,7 @@ from src.synthesis.conversation_optimizer import ConversationOptimizer
 logger = structlog.get_logger(__name__)
 
 
-class NuggetGenerator:
+class NuggetGenerator(NuggetGeneratorInterface):
     """
     Handles the generation of knowledge nuggets from conversations.
 
@@ -33,14 +37,14 @@ class NuggetGenerator:
         self,
         settings: AppSettings,
         limiter: Limiter,
-        optimizer: ConversationOptimizer = None,
+        optimizer: Optional[ConversationOptimizerInterface] = None,
     ):
         self.settings = settings
         self.limiter = limiter
         self.optimizer = optimizer or ConversationOptimizer()
         self.metrics = Metrics()
 
-    def generate_nuggets(
+    def generate_nuggets_batch(
         self, conv_batch: List[Dict[str, Any]], prompt_template: str
     ) -> List[Dict[str, Any]]:
         """
@@ -117,11 +121,13 @@ class NuggetGenerator:
             conv_msgs = conv.get("conversation") or conv.get("messages") or conv
             compact_msgs = [
                 {
-                    "id": m.get("id"),
-                    "date": m.get("date"),
-                    "sender_id": m.get("sender_id"),
-                    "content": m.get("content"),
-                    "normalized_values": m.get("normalized_values", []),
+                    "id": m.get("id") if isinstance(m, dict) else None,
+                    "date": m.get("date") if isinstance(m, dict) else None,
+                    "sender_id": m.get("sender_id") if isinstance(m, dict) else None,
+                    "content": m.get("content") if isinstance(m, dict) else str(m),
+                    "normalized_values": m.get("normalized_values", [])
+                    if isinstance(m, dict)
+                    else [],
                 }
                 for m in conv_msgs
             ]

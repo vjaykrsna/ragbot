@@ -19,10 +19,8 @@ def setup_logging(settings: AppSettings) -> None:
     console_level_name = settings.console_log_level.upper()
     console_level = getattr(logging, console_level_name, logging.INFO)
 
-    # Define structlog processors
-    shared_processors = [
-        structlog.contextvars.merge_contextvars,
-        structlog.stdlib.add_logger_name,
+    # Shared processors for structlog
+    shared_processors: list = [
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),

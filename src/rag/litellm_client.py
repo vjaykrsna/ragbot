@@ -75,7 +75,14 @@ def complete(
                 model=synthesis_model_name,  # Target the synthesis model group
                 messages=messages,
             )
-            return resp
+            # Extract the text content from the response
+            if resp and hasattr(resp, "choices") and len(resp.choices) > 0:
+                choice = resp.choices[0]
+                if hasattr(choice, "message") and hasattr(choice.message, "content"):
+                    content = choice.message.content
+                    if isinstance(content, str):
+                        return content
+            return ""
         except Exception as e:
             logger.warning(
                 "Completion attempt %d/%d failed: %s",
@@ -86,7 +93,7 @@ def complete(
             )
             time.sleep(1 + attempt)
     logger.error("Completion failed after %d attempts", max_retries)
-    return None
+    return ""
 
 
 @retry_with_backoff(max_retries=3, initial_wait=1.0, backoff_factor=2.0)
@@ -118,4 +125,4 @@ def embed(
             )
             time.sleep(1 + attempt)
     logger.error("Embedding failed after %d attempts", max_retries)
-    return None
+    return []  # Return empty list instead of None

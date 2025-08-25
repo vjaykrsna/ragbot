@@ -6,7 +6,7 @@ the application, enabling dependency injection and easier testing.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from chromadb.api.models.Collection import Collection
 
@@ -20,7 +20,7 @@ class DataLoaderInterface(ABC):
         pass
 
     @abstractmethod
-    def load_prompt_template(self) -> str:
+    def load_prompt_template(self) -> Optional[str]:
         """Load the prompt template for nugget generation."""
         pass
 
@@ -66,6 +66,13 @@ class ConversationOptimizerInterface(ABC):
         self, conversations: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Optimize a list of conversations."""
+        pass
+
+    @abstractmethod
+    def deduplicate_conversations(
+        self, conversations: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Deduplicate a list of conversations."""
         pass
 
 
@@ -115,6 +122,11 @@ class DatabaseInterface(ABC):
     @abstractmethod
     def insert_messages(self, messages: List[Dict[str, Any]]):
         """Insert messages into the database."""
+        pass
+
+    @abstractmethod
+    def _get_connection(self):
+        """Get a database connection."""
         pass
 
 
