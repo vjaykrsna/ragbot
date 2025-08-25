@@ -26,6 +26,14 @@ from src.history_extractor.utils import normalize_title
 logger = structlog.get_logger(__name__)
 
 
+class GeneralTopic:
+    """A mock topic object for regular groups that are not forums."""
+
+    def __init__(self):
+        self.id = 0
+        self.title = "General"
+
+
 class TelegramExtractor:
     """
     Extracts messages from Telegram groups and topics.
@@ -281,7 +289,7 @@ class TelegramExtractor:
         # Update last message ID with thread-safe access
         if total_saved > 0 and max_id > 0:
             if last_msg_ids_lock:
-                with last_msg_ids_lock:
+                async with last_msg_ids_lock:
                     last_msg_ids[last_id_key] = max_id
             else:
                 last_msg_ids[last_id_key] = max_id
@@ -409,11 +417,6 @@ class TelegramExtractor:
                     )
 
                     # Create a proper GeneralTopic object instead of using type() hack
-                    class GeneralTopic:
-                        def __init__(self):
-                            self.id = 0
-                            self.title = "General"
-
                     general_topic = GeneralTopic()
                     count = await self.extract_from_topic(
                         entity, general_topic, last_msg_ids, last_msg_ids_lock
