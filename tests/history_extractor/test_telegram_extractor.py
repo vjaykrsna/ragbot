@@ -51,7 +51,9 @@ class TestTelegramExtractor(unittest.TestCase):
                 self.temp_dir, "knowledge_base"
             )
 
-        self.mock_client = AsyncMock()
+        self.mock_client = MagicMock()
+        self.mock_client.get_chat = AsyncMock()
+        self.mock_client.invoke = AsyncMock()
         self.mock_storage = MagicMock()
         self.extractor = TelegramExtractor(self.mock_client, self.mock_storage)
 
@@ -77,8 +79,8 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.title = "Test Group"
 
         mock_topic = MagicMock()
-        mock_topic.id = 456
-        mock_topic.title = "Test Topic"
+        mock_topic.message_thread_id = 456
+        mock_topic.name = "Test Topic"
 
         last_msg_ids = {}
 
@@ -98,14 +100,7 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_msg.service = False  # Not a service message
         mock_msg.media = None  # Text message, so media is None but text is set
 
-        # Mock the async generator properly
-        async def async_generator(items):
-            for item in items:
-                yield item
-
-        self.mock_client.get_chat_history = MagicMock(
-            return_value=async_generator([mock_msg])
-        )
+        self.mock_client.get_chat_history.return_value = MockAsyncIterator([mock_msg])
 
         # Mock get_message_details to return a valid message
         mock_get_message_details.return_value = ("text", "hello", {})
@@ -134,18 +129,13 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.id = 123
         mock_entity.title = "Test Forum Group"
         mock_entity.is_forum = True
-        # Changed to use AsyncMock for get_chat
         self.mock_client.get_chat = AsyncMock(return_value=mock_entity)
 
         mock_topic = MagicMock()
         mock_topic.id = 456
         mock_topic.title = "Test Topic"
-        mock_topics_result = MagicMock()
-        mock_topics_result.topics = [mock_topic]
-        # Changed to use AsyncMock for invoke
-        self.mock_client.invoke = AsyncMock(return_value=mock_topics_result)
+        self.mock_client.get_forum_topics.return_value = MockAsyncIterator([mock_topic])
 
-        # Changed to use AsyncMock
         self.extractor.extract_from_topic = AsyncMock(return_value=5)
 
         # Act
@@ -170,14 +160,10 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity = MagicMock()
         mock_entity.id = 123
         mock_entity.is_forum = False
-        # Changed to use AsyncMock for get_chat
         self.mock_client.get_chat = AsyncMock(return_value=mock_entity)
 
-        # Mock the GetForumTopics call to raise an exception (simulating a regular group)
-        # Changed to use AsyncMock for invoke
-        self.mock_client.invoke = AsyncMock(side_effect=Exception("Not a forum group"))
+        self.mock_client.get_forum_topics.side_effect = Exception("Not a forum group")
 
-        # Changed to use AsyncMock
         self.extractor.extract_from_topic = AsyncMock(return_value=3)
 
         # Act
@@ -232,31 +218,18 @@ class TestTelegramExtractor(unittest.TestCase):
         access_hash = getattr(mock_entity, "access_hash", 0)
         self.assertEqual(access_hash, None)
 
-    @patch("src.history_extractor.telegram_extractor.InputChannel")
-    @patch("src.history_extractor.telegram_extractor.GetForumTopics")
-    def test_get_forum_topics_raw_api_success(
-        self, mock_get_forum_topics, mock_input_channel
-    ):
+    def test_get_forum_topics_raw_api_success(self):
         """Test successful GetForumTopics raw API call."""
         # Arrange
         mock_entity = MagicMock()
         mock_entity.id = 123
         mock_entity.channel_id = 456
         mock_entity.access_hash = 789
+        mock_entity.is_forum = True
 
-        mock_input_channel_instance = MagicMock()
-        mock_input_channel.return_value = mock_input_channel_instance
-
-        mock_topics_result = MagicMock()
-        mock_topics_result.topics = [MagicMock()]
-        self.mock_client.invoke = AsyncMock(return_value=mock_topics_result)
-
-        # Mock get_chat_history to return an async iterator
-        async def async_generator(items):
-            for item in items:
-                yield item
-
-        self.mock_client.get_chat_history = MagicMock(return_value=async_generator([]))
+        mock_topic = MagicMock()
+        self.mock_client.get_forum_topics.return_value = MockAsyncIterator([mock_topic])
+        self.extractor.extract_from_topic = AsyncMock(return_value=1)
 
         # Act
         async def run_test():
@@ -265,17 +238,10 @@ class TestTelegramExtractor(unittest.TestCase):
         asyncio.run(run_test())
 
         # Assert
-        mock_input_channel.assert_called_once_with(
-            channel_id=456,  # Should use channel_id
-            access_hash=789,
-        )
-        self.mock_client.invoke.assert_called_once()
+        self.mock_client.get_forum_topics.assert_called_once_with(123)
+        self.extractor.extract_from_topic.assert_called_once()
 
-    @patch("src.history_extractor.telegram_extractor.InputChannel")
-    @patch("src.history_extractor.telegram_extractor.GetForumTopics")
-    def test_get_forum_topics_raw_api_failure_fallback(
-        self, mock_get_forum_topics, mock_input_channel
-    ):
+    def test_get_forum_topics_raw_api_failure_fallback(self):
         """Test GetForumTopics raw API failure with fallback to regular group."""
         # Arrange
         mock_entity = MagicMock()
@@ -285,17 +251,10 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.is_forum = False  # Explicitly set to False to trigger fallback
 
         # Mock API failure
-        self.mock_client.invoke = AsyncMock(side_effect=Exception("API Error"))
+        self.mock_client.get_forum_topics.side_effect = Exception("API Error")
 
         # Mock regular group processing
         self.extractor.extract_from_topic = AsyncMock(return_value=5)
-
-        # Mock get_chat_history to return an async iterator
-        async def async_generator(items):
-            for item in items:
-                yield item
-
-        self.mock_client.get_chat_history = MagicMock(return_value=async_generator([]))
 
         # Act
         async def run_test():
@@ -334,7 +293,7 @@ class TestTelegramExtractor(unittest.TestCase):
         # Mock flood wait error
         mock_flood_wait_exception = MagicMock()
         mock_flood_wait_exception.value = 30
-        self.mock_client.get_chat = AsyncMock(side_effect=mock_flood_wait_exception)
+        self.mock_client.get_chat.side_effect = mock_flood_wait_exception
 
         # Mock successful retry
         self.extractor.extract_from_group_id = AsyncMock(return_value=10)
@@ -366,15 +325,13 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.title = "Test Group"
 
         mock_topic = MagicMock()
-        mock_topic.id = 456
-        mock_topic.title = "Test Topic"
+        mock_topic.message_thread_id = 456
+        mock_topic.name = "Test Topic"
 
         last_msg_ids = {}
 
         # Mock empty message list to trigger the initialization path
-        self.mock_client.get_chat_history = MagicMock(
-            return_value=MockAsyncIterator([])
-        )
+        self.mock_client.get_chat_history.return_value = MockAsyncIterator([])
 
         # Act
         async def run_test():
@@ -397,8 +354,8 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.title = "Test Group"
 
         mock_topic = MagicMock()
-        mock_topic.id = 456
-        mock_topic.title = "Test Topic"
+        mock_topic.message_thread_id = 456
+        mock_topic.name = "Test Topic"
 
         last_msg_ids = {}
 
@@ -417,9 +374,7 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_msg.service = False
         mock_msg.media = None
 
-        self.mock_client.get_chat_history = MagicMock(
-            return_value=MockAsyncIterator([mock_msg])
-        )
+        self.mock_client.get_chat_history.return_value = MockAsyncIterator([mock_msg])
 
         # Act
         async def run_test():
@@ -434,11 +389,7 @@ class TestTelegramExtractor(unittest.TestCase):
             result, 1
         )  # Should still process the message despite size estimation failure
 
-    @patch("src.history_extractor.telegram_extractor.InputChannel")
-    @patch("src.history_extractor.telegram_extractor.GetForumTopics")
-    def test_concurrent_group_processing_thread_safety(
-        self, mock_get_forum_topics, mock_input_channel
-    ):
+    def test_concurrent_group_processing_thread_safety(self):
         """Test that concurrent group processing is thread-safe."""
         # Arrange
         import asyncio
@@ -456,16 +407,7 @@ class TestTelegramExtractor(unittest.TestCase):
         self.extractor.extract_from_topic = AsyncMock(return_value=5)
 
         # Mock API failure to trigger fallback
-        mock_input_channel_instance = MagicMock()
-        mock_input_channel.return_value = mock_input_channel_instance
-        self.mock_client.invoke = AsyncMock(side_effect=Exception("API Error"))
-
-        # Mock get_chat_history to return an async iterator
-        async def async_generator(items):
-            for item in items:
-                yield item
-
-        self.mock_client.get_chat_history = MagicMock(return_value=async_generator([]))
+        self.mock_client.get_forum_topics.side_effect = Exception("API Error")
 
         # Act
         async def run_test():
@@ -487,15 +429,13 @@ class TestTelegramExtractor(unittest.TestCase):
         mock_entity.title = "Test Group"
 
         mock_topic = MagicMock()
-        mock_topic.id = 456
-        mock_topic.title = "Test Topic"
+        mock_topic.message_thread_id = 456
+        mock_topic.name = "Test Topic"
 
         last_msg_ids = {}
 
         # Mock empty message list
-        self.mock_client.get_chat_history = MagicMock(
-            return_value=MockAsyncIterator([])
-        )
+        self.mock_client.get_chat_history.return_value = MockAsyncIterator([])
 
         # Act
         async def run_test():

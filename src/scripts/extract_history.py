@@ -4,7 +4,7 @@ import os
 import sqlite3
 
 import structlog
-from pyrotgfork import Client
+from pyrogram import Client
 
 from src.core.app import initialize_app
 from src.history_extractor.storage import Storage

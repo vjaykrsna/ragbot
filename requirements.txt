@@ -304,7 +304,7 @@ pyproject-hooks==1.2.0
     # via build
 pyrate-limiter==3.9.0
     # via -r requirements.in
-pyrotgfork==2.2.15
+pyrotgfork @ git+https://github.com/TelegramPlayground/pyrogram.git
     # via -r requirements.in
 pysocks==1.7.1
     # via pyrotgfork

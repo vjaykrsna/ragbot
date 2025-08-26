@@ -4,8 +4,8 @@ from datetime import datetime
 from typing import Any, Dict, Tuple
 
 import structlog
-from pyrotgfork import Client
-from pyrotgfork.errors import FloodWait
+from pyrogram import Client
+from pyrogram.errors import FloodWait
 
 from src.core.error_handler import (
     default_alert_manager,

@@ -23,6 +23,21 @@ from src.processing.external_sorter import ExternalSorter
 from src.processing.pipeline import DataProcessingPipeline
 
 
+class MockAsyncIterator:
+    """Mock async iterator for testing."""
+
+    def __init__(self, items):
+        self.items = items
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.items:
+            return self.items.pop(0)
+        raise StopAsyncIteration
+
+
 class TestPipelineIntegration(unittest.TestCase):
     """Test complete pipeline integration for production reliability."""
 
@@ -67,7 +82,9 @@ class TestPipelineIntegration(unittest.TestCase):
         os.makedirs(self.app_context.settings.paths.processed_data_dir, exist_ok=True)
 
         # Initialize pipeline components
-        self.mock_client = AsyncMock()
+        self.mock_client = MagicMock()
+        self.mock_client.get_chat = AsyncMock()
+        self.mock_client.invoke = AsyncMock()
         self.storage = Storage(self.app_context)
         self.extractor = TelegramExtractor(self.mock_client, self.storage)
 
@@ -88,7 +105,8 @@ class TestPipelineIntegration(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def test_complete_extraction_to_storage_pipeline(self):
+    @patch("src.history_extractor.telegram_extractor.get_message_details")
+    def test_complete_extraction_to_storage_pipeline(self, mock_get_message_details):
         """Test complete pipeline from extraction to database storage."""
         # Arrange
         mock_entity = MagicMock()
@@ -96,8 +114,8 @@ class TestPipelineIntegration(unittest.TestCase):
         mock_entity.title = "Test Group"
 
         mock_topic = MagicMock()
-        mock_topic.id = 456
-        mock_topic.title = "Test Topic"
+        mock_topic.message_thread_id = 456
+        mock_topic.name = "Test Topic"
 
         # Create realistic test messages
         test_messages = []
@@ -117,21 +135,13 @@ class TestPipelineIntegration(unittest.TestCase):
             mock_msg.poll = None  # Explicitly set to None to avoid poll processing
             test_messages.append(mock_msg)
 
-        # Mock async iterator
-        class MockAsyncIterator:
-            def __init__(self, items):
-                self.items = items
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                if self.items:
-                    return self.items.pop(0)
-                raise StopAsyncIteration
-
-        self.mock_client.get_chat_history = MagicMock(
-            return_value=MockAsyncIterator(test_messages)
+        self.mock_client.get_chat_history.return_value = MockAsyncIterator(
+            test_messages
+        )
+        mock_get_message_details.side_effect = lambda msg: (
+            "text",
+            msg.text,
+            {},
         )
 
         # Act
@@ -315,7 +325,8 @@ class TestPipelineIntegration(unittest.TestCase):
         self.assertEqual(result, 3)  # Should succeed on retry
         self.assertEqual(call_count, 2)  # Should have been called twice
 
-    def test_memory_management_during_large_extraction(self):
+    @patch("src.history_extractor.telegram_extractor.get_message_details")
+    def test_memory_management_during_large_extraction(self, mock_get_message_details):
         """Test memory management during large-scale extraction."""
         # Arrange
         mock_entity = MagicMock()
@@ -323,8 +334,8 @@ class TestPipelineIntegration(unittest.TestCase):
         mock_entity.title = "Test Group"
 
         mock_topic = MagicMock()
-        mock_topic.id = 456
-        mock_topic.title = "Test Topic"
+        mock_topic.message_thread_id = 456
+        mock_topic.name = "Test Topic"
 
         # Create a large number of messages (1000)
         large_message_list = []
@@ -346,20 +357,13 @@ class TestPipelineIntegration(unittest.TestCase):
             mock_msg.poll = None  # Explicitly set to None to avoid poll processing
             large_message_list.append(mock_msg)
 
-        class MockAsyncIterator:
-            def __init__(self, items):
-                self.items = items
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                if self.items:
-                    return self.items.pop(0)
-                raise StopAsyncIteration
-
-        self.mock_client.get_chat_history = MagicMock(
-            return_value=MockAsyncIterator(large_message_list)
+        self.mock_client.get_chat_history.return_value = MockAsyncIterator(
+            large_message_list
+        )
+        mock_get_message_details.side_effect = lambda msg: (
+            "text",
+            msg.text,
+            {},
         )
 
         # Act
