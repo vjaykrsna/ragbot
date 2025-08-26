@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import sqlite3
-import threading
 
 import structlog
 from pyrogram import Client
@@ -85,7 +84,7 @@ async def main():
         logging.info(f"🚀 Starting extraction of {len(group_ids)} groups...")
 
         # Create a lock for thread-safe access to shared data
-        last_msg_ids_lock = threading.Lock()
+        last_msg_ids_lock = asyncio.Lock()
 
         # Process groups concurrently based on the concurrent_groups setting
         semaphore = asyncio.Semaphore(settings.telegram.extraction.concurrent_groups)

@@ -4,6 +4,7 @@ import inspect
 
 import structlog
 
+from src.bot import main as bot_main
 from src.scripts import extract_history, synthesize_knowledge
 
 logger = structlog.get_logger(__name__)
@@ -32,6 +33,10 @@ def run_cli(argv: list[str]):
         "synthesize", help="Synthesize knowledge nuggets from conversations."
     )
     parser_synthesize.set_defaults(func=synthesize_knowledge.main)
+
+    # --- Bot Command ---
+    parser_bot = subparsers.add_parser("bot", help="Run the Telegram bot.")
+    parser_bot.set_defaults(func=bot_main)
 
     args = parser.parse_args(argv)
 

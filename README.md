@@ -127,19 +127,19 @@ nano .env
 ### 3. Extract Chat History
 ```bash
 # Extract messages from Telegram groups
-python -m src.scripts.extract_history
+python -m src.cli extract
 ```
 
 ### 4. Build Knowledge Base
 ```bash
 # Process and synthesize knowledge
-python -m src.scripts.synthesize_knowledge
+python -m src.cli synthesize
 ```
 
 ### 5. Run the Bot
 ```bash
 # Start the Telegram bot
-python -m src.bot.main
+python -m src.cli bot
 ```
 
 ## 🧪 Testing

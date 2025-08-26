@@ -6,8 +6,6 @@ from typing import Any, Dict, Tuple
 import structlog
 from pyrogram import Client
 from pyrogram.errors import FloodWait
-from pyrogram.raw.functions.channels import GetForumTopics
-from pyrogram.raw.types import InputChannel
 
 from src.core.error_handler import (
     default_alert_manager,
@@ -24,6 +22,14 @@ from src.history_extractor.storage import Storage
 from src.history_extractor.utils import normalize_title
 
 logger = structlog.get_logger(__name__)
+
+
+class GeneralTopic:
+    """A mock topic object for regular groups that are not forums."""
+
+    def __init__(self):
+        self.id = 0
+        self.title = "General"
 
 
 class TelegramExtractor:
@@ -85,8 +91,8 @@ class TelegramExtractor:
             The number of messages extracted.
         """
         group_id = entity.id
-        topic_id = topic.id
-        topic_title = normalize_title(getattr(topic, "title", "General"))
+        topic_id = topic.message_thread_id
+        topic_title = normalize_title(getattr(topic, "name", "General"))
         last_id_key = (group_id, topic_id)
         last_id = last_msg_ids.get(last_id_key, 0)
         max_id = 0
@@ -281,7 +287,7 @@ class TelegramExtractor:
         # Update last message ID with thread-safe access
         if total_saved > 0 and max_id > 0:
             if last_msg_ids_lock:
-                with last_msg_ids_lock:
+                async with last_msg_ids_lock:
                     last_msg_ids[last_id_key] = max_id
             else:
                 last_msg_ids[last_id_key] = max_id
@@ -350,47 +356,31 @@ class TelegramExtractor:
                 entity = await self.client.get_chat(group_id)
             logger.info(f"\nProcessing Group: {entity.title} (ID: {group_id})")
 
-            # Try to get forum topics regardless of is_forum flag
-            # This handles cases where is_forum is incorrectly reported as False
+            # Try to get forum topics. This is now much simpler with the new library.
             topics = []
             try:
-                # Create InputChannel object for Pyrogram
-                input_channel = InputChannel(
-                    channel_id=getattr(entity, "channel_id", entity.id),
-                    access_hash=getattr(entity, "access_hash", 0),
-                )
-
-                # Use Pyrogram's raw function to get forum topics
-                topics_result = await self.client.invoke(
-                    GetForumTopics(
-                        channel=input_channel,
-                        offset_date=int(datetime.now().timestamp()),
-                        offset_id=0,
-                        offset_topic=0,
-                        limit=100,
-                    )
-                )
-                if topics_result and hasattr(topics_result, "topics"):
-                    topics = topics_result.topics
+                async for topic in self.client.get_forum_topics(entity.id):
+                    topics.append(topic)
             except Exception as e:
-                # If we can't get topics, it might be a regular group or there was an error
-                logger.debug(
-                    f"  - Could not fetch topics (might be regular group): {e}"
+                logger.warning(
+                    f"Could not fetch topics for group {entity.id}. "
+                    f"This might be a regular group or an error occurred: {e}"
                 )
 
             if topics:
+                self.storage.save_topics(topics, group_id)
                 logger.info(f"📋 Found {len(topics)} topics:")
 
                 # Display topic list upfront
                 for i, topic in enumerate(topics, 1):
-                    topic_title = normalize_title(getattr(topic, "title", "General"))
+                    topic_title = normalize_title(getattr(topic, "name", "General"))
                     logger.info(f"  {i:2d}. {topic_title}")
 
                 logger.info(f"🔄 Starting extraction of {len(topics)} topics...")
 
                 # Process topics with progress tracking
                 for i, topic in enumerate(topics, 1):
-                    topic_title = normalize_title(getattr(topic, "title", "General"))
+                    topic_title = normalize_title(getattr(topic, "name", "General"))
                     logger.info(
                         f"📊 Processing topic {i}/{len(topics)}: '{topic_title}'"
                     )
@@ -409,11 +399,6 @@ class TelegramExtractor:
                     )
 
                     # Create a proper GeneralTopic object instead of using type() hack
-                    class GeneralTopic:
-                        def __init__(self):
-                            self.id = 0
-                            self.title = "General"
-
                     general_topic = GeneralTopic()
                     count = await self.extract_from_topic(
                         entity, general_topic, last_msg_ids, last_msg_ids_lock

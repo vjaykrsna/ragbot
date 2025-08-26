@@ -8,7 +8,6 @@ and resolve services. It supports both singleton and transient services.
 from typing import Any, Callable, Dict, Type, TypeVar
 
 T = TypeVar("T")
-U = TypeVar("U")
 
 
 class DIContainer:
@@ -22,7 +21,7 @@ class DIContainer:
         self._singletons: Dict[Type, Any] = {}
         self._instances: Dict[Type, Any] = {}
 
-    def register_singleton(self, interface: Type[T], implementation: Type[U]) -> None:
+    def register_singleton(self, interface: Type[T], implementation: Type[T]) -> None:
         """Register a singleton service."""
         self._services[interface] = implementation
         self._singletons[interface] = None
